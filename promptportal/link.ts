@@ -18,6 +18,12 @@ const STABLE_LINK_MS = 30 * 1000;
 // (WS-level pings are answered below the JS layer, so they prove nothing to
 // this end). Redial rather than trust it.
 const SILENCE_TIMEOUT_MS = 90 * 1000;
+// How long a dropped link gets to deliver its close event. terminate() on a
+// live socket closes it immediately — but on a transport that died during a
+// system sleep, Bun's close event can fail to arrive at all, and a redial
+// loop waiting for it would park forever (a launcher that never comes back
+// after the machine wakes). The grace timer settles the link regardless.
+const TERMINATE_GRACE_MS = 5 * 1000;
 
 // Accepts http(s)/ws(s); the link is a WebSocket, so normalize to ws(s). A
 // bare host ("hub.example.com") means TLS — cleartext is never a default, so
@@ -111,18 +117,41 @@ function runLink(url: string, subprotocol: string, password: string,
 
     let openedAt = 0;
     let lastTraffic = Date.now();
+    let settled = false;
+    let graceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Every path out of this link funnels here, exactly once: the close
+    // event when it arrives, drop()'s grace timer when it does not.
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      clearInterval(watchdog);
+      if (graceTimer) clearTimeout(graceTimer);
+      handlers.onClose?.();
+      resolve(openedAt === 0 ? 0 : Date.now() - openedAt);
+    };
+
+    // Abandon the link. terminate(), not close(): a graceful close waits for
+    // queued data to drain, which on a dead or backlogged link never happens
+    // — the socket would sit in CLOSING instead of redialing. The close
+    // event normally follows and settles; the grace timer covers a
+    // terminate() whose close event never arrives.
+    const drop = () => {
+      ws.terminate();
+      graceTimer ??= setTimeout(() => {
+        console.log('hub link close event never arrived; abandoning the socket');
+        settle();
+      }, TERMINATE_GRACE_MS);
+    };
 
     // Terminal output can outrun a slow link; one whose send buffer
     // grows past the cap is dropped rather than buffered without bound, so
-    // every viewer recovers from the replay snapshot on redial. terminate(),
-    // not close(): a graceful close waits for the queued data to drain — the
-    // very backlog that cannot be sent — leaving the link stuck in CLOSING
-    // instead of redialing.
+    // every viewer recovers from the replay snapshot on redial.
     const post: Post = (msg) => {
       if (ws.readyState !== WebSocket.OPEN) return;
       if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
         console.log('hub link send queue overflowed; dropping it to resync');
-        ws.terminate();
+        drop();
         return;
       }
       ws.send(JSON.stringify(msg));
@@ -134,7 +163,7 @@ function runLink(url: string, subprotocol: string, password: string,
     const watchdog = setInterval(() => {
       if (Date.now() - lastTraffic > SILENCE_TIMEOUT_MS) {
         console.log('hub link silent too long; dropping it to redial');
-        ws.terminate(); // close() would stall in CLOSING on the same dead link
+        drop();
       }
     }, 30 * 1000);
     watchdog.unref?.();
@@ -152,17 +181,18 @@ function runLink(url: string, subprotocol: string, password: string,
       if (msg) handlers.onMessage(msg, post);
     };
 
+    // Logged even without a message: an error event with no detail is still
+    // the only trace some failures leave (a close event is not guaranteed to
+    // follow — see drop()).
     ws.onerror = (event: Event & { message?: string }) => {
-      if (event.message) console.log(`hub link error: ${event.message}`);
+      console.log(`hub link error${event.message ? `: ${event.message}` : ''}`);
     };
 
     ws.onclose = (event) => {
-      clearInterval(watchdog);
       const detail = `code ${event.code}` + (event.reason ? ` ${JSON.stringify(event.reason)}` : '');
       if (openedAt === 0) console.log(`hub link dial failed (${detail})`);
       else console.log(`hub link closed (${detail}, up ${Math.round((Date.now() - openedAt) / 1000)}s)`);
-      handlers.onClose?.();
-      resolve(openedAt === 0 ? 0 : Date.now() - openedAt);
+      settle();
     };
   });
 }
