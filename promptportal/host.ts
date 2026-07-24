@@ -1,7 +1,7 @@
 import path from 'node:path';
 
 import { SESSION_PROTOCOL } from '../lib/protocol';
-import { resolveExistingDir } from './config';
+import { isWindows, resolveExistingDir } from './config';
 import { disableNewlineAutoReturn } from './console';
 import { maintainLink, type Post } from './link';
 import { muteConsole, setLogTag } from './log';
@@ -33,6 +33,15 @@ export interface HostContext {
   password: string;
   node: string;
 }
+
+// The Esc key from a remote viewer, in win32-input-mode encoding (keydown +
+// keyup). ConPTY asks its terminal for win32-input-mode, and once the local
+// window has typed anything, conhost holds a bare 0x1b as an incomplete
+// sequence — the phone's Esc dies silently while printable keys and complete
+// sequences (arrows) keep working. The win32 encoding is parsed exactly in
+// every parser state; longer ESC-prefixed frames are real sequences and must
+// pass through untouched.
+const WIN32_INPUT_ESC = '\x1b[27;1;27;1;0;1_\x1b[27;1;27;0;0;1_';
 
 export async function runHost(spec: HostSpec, ctx: HostContext): Promise<never> {
   const cwd = resolveExistingDir(spec.cwd || process.cwd());
@@ -215,7 +224,9 @@ export async function runHost(spec: HostSpec, ctx: HostContext): Promise<never> 
           console.log(`viewer detached (${watchCount} watching)`);
           break;
         case 'i':
-          if (typeof msg.d === 'string') session.write(msg.d);
+          if (typeof msg.d === 'string') {
+            session.write(isWindows && msg.d === '\x1b' ? WIN32_INPUT_ESC : msg.d);
+          }
           break;
         case 'r':
           if (typeof msg.c === 'number' && typeof msg.r === 'number') {
