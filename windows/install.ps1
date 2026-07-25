@@ -47,7 +47,8 @@
   # rebuilds promptportal.exe (and hub.exe when the hub is installed here) from the
   # current repo and restarts the tasks, touching no passwords, environment
   # variables, PATH entry, or Windows Terminal profile. Needs no -HubUrl: the
-  # stored configuration already has it. Open sessions end with the swap.
+  # stored configuration already has it. Open sessions keep running on the
+  # old build until their windows close; only the launcher (and hub) restart.
 #>
 param(
   [string]$HubUrl,
@@ -126,8 +127,8 @@ function Build-StagedExecutables([bool]$Hub, [bool]$Launcher = $true) {
 # hub. Match our own build by Bun's PE company field ("Oven"), not the install
 # path, so a copy left running from another clone is caught too. Best effort —
 # this would also stop an unrelated Bun exe that happened to be named
-# $Name.exe, a trade accepted to reliably retire our own stragglers. Shared by
-# the staged-build swap and by -Uninstall.
+# $Name.exe, a trade accepted to reliably retire our own stragglers.
+# -Uninstall only: install and update spare session hosts (Stop-ResidentProcess).
 function Stop-PromptPortalProcess([string]$Name, [string]$StopNote) {
   $running = @(Get-Process $Name -ErrorAction SilentlyContinue | Where-Object { $_.Company -eq 'Oven' })
   if ($running) {
@@ -137,14 +138,40 @@ function Stop-PromptPortalProcess([string]$Name, [string]$StopNote) {
   }
 }
 
-# Swap a staged build in. Whatever runs the old binary stops only now, once a
-# good one exists — it must stop then, since Windows locks a running image
-# against overwrite. Stopping the scheduled task is not enough: it terminates
-# the conhost it started, which can orphan the child — and a process started
-# by hand has no task at all.
-function Install-StagedExecutable([string]$Name, [string]$TaskName, [string]$StopNote) {
+# Stop the resident copies of $Name — `promptportal launcher`, or every hub.exe —
+# so their task can restart them on the fresh binary. Session hosts are
+# deliberately spared: the swap renames the old image aside and a running
+# process follows its file through a rename, so open sessions live on
+# untouched. Sparing them also means running the update from inside a
+# PromptPortal session is safe — stopping every host would kill the session
+# the script itself runs in, mid-swap. A session host never carries a first
+# argument of `launcher`, which is what marks the resident.
+function Stop-ResidentProcess([string]$Name) {
+  $running = @(Get-Process $Name -ErrorAction SilentlyContinue | Where-Object { $_.Company -eq 'Oven' })
+  if ($Name -eq 'promptportal') {
+    $running = @($running | Where-Object {
+      $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" -ErrorAction SilentlyContinue).CommandLine
+      $cmd -and (($cmd -replace '^\s*(?:"[^"]+"|\S+)\s*', '') -match '^launcher(\s|$)')
+    })
+  }
+  if ($running) {
+    Write-Host "Stopping the running $(if ($Name -eq 'promptportal') { 'launcher' } else { $Name })..."
+    $running | Stop-Process -Force
+    $running | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+  }
+}
+
+# Swap a staged build in. Only the resident process stops — the swap renames
+# the old image aside rather than overwriting it (Windows locks a running
+# image against overwrite, but always allows renaming one), so session hosts
+# keep running on the old build until their windows close, and only then does
+# the old copy become deletable (cleaned up best-effort; the next run
+# retries). Stopping the scheduled task is not enough to retire the resident:
+# it terminates the conhost it started, which can orphan the child — and a
+# process started by hand has no task at all.
+function Install-StagedExecutable([string]$Name, [string]$TaskName) {
   Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-  Stop-PromptPortalProcess $Name $StopNote
+  Stop-ResidentProcess $Name
   # Swap the new binary in via rename-aside: Move-Item -Force does not reliably
   # replace an existing file, and a straggler process would hold the exe locked
   # against deletion anyway — but Windows always allows renaming a running
@@ -338,13 +365,13 @@ function Invoke-Update {
   if ($hubInstalled) {
     $hubArgs = (Get-ScheduledTask -TaskName $hubTask).Actions[0].Arguments
     $hubPort = if ($hubArgs -match '--port\s+(\d+)') { [int]$Matches[1] } else { $HubPort }
-    Install-StagedExecutable 'hub' $hubTask ''
+    Install-StagedExecutable 'hub' $hubTask
     Start-ScheduledTask -TaskName $hubTask
     Wait-HubHolds $hubPort ($hubArgs -replace '^\s*--headless\s+', '')
     Write-Host "The hub is up on http://127.0.0.1:$hubPort."
   }
   if ($launcherInstalled) {
-    Install-StagedExecutable 'promptportal' $launcherTask ' (open sessions end with them)'
+    Install-StagedExecutable 'promptportal' $launcherTask
     Start-ScheduledTask -TaskName $launcherTask
     Wait-ProcessHolds 'promptportal' "$dist\promptportal.exe" 'launcher' "`"$dist\promptportal.exe`" launcher"
   }
@@ -418,7 +445,7 @@ if ($InstallHub) {
   Invoke-Utf8Pipe @($WebAccessPassword, $Password) "$dist\hub-new.exe" @('set-password')
   if ($LASTEXITCODE -ne 0) { throw 'Failed to store the hub passwords; see output above.' }
 
-  Install-StagedExecutable 'hub' $hubTask ''
+  Install-StagedExecutable 'hub' $hubTask
 
   # Profiles and quick commands persist here (the compose deployment's
   # hub-data volume, as a directory). A scheduled task has no per-process
@@ -460,7 +487,7 @@ if ($Password -or $InstallHub) {
 }
 if ($LASTEXITCODE -ne 0) { throw "Failed to store the password; see output above." }
 
-Install-StagedExecutable 'promptportal' $launcherTask ' (open sessions end with them)'
+Install-StagedExecutable 'promptportal' $launcherTask
 
 # --- Persist configuration ------------------------------------------------------
 # Non-secret settings go to user environment variables; the scheduled tasks and
