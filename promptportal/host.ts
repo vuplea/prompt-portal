@@ -43,6 +43,41 @@ export interface HostContext {
 // pass through untouched.
 const WIN32_INPUT_ESC = '\x1b[27;1;27;1;0;1_\x1b[27;1;27;0;0;1_';
 
+// "Take control back" must mean a person at the workstation. The window's
+// size changes with nobody at the desk — monitors detaching on sleep
+// collapse the desktop to a stub display and Windows resizes every window —
+// and the console can feed this process bytes nobody typed (focus reports,
+// query replies). Following those yanks the shared pty away from a phone
+// viewer while the machine sits locked; the browser client deduplicates its
+// resize sends, so the theft sticks until the viewer reattaches. Physical
+// keyboard/mouse input in this session within this window is what counts as
+// presence.
+const LOCAL_PRESENCE_MS = 30_000;
+
+// Whether the session's last physical input (GetLastInputInfo) is recent.
+// Anywhere the question cannot be asked (non-Windows, FFI failure) counts as
+// present, which keeps the plain follow-the-window behavior.
+function makeLocalPresenceProbe(): () => boolean {
+  if (!isWindows) return () => true;
+  try {
+    const { dlopen, FFIType, ptr } = require('bun:ffi') as typeof import('bun:ffi');
+    const user32 = dlopen('user32.dll', {
+      GetLastInputInfo: { args: [FFIType.ptr], returns: FFIType.i32 },
+    }).symbols;
+    const kernel32 = dlopen('kernel32.dll', {
+      GetTickCount: { args: [], returns: FFIType.u32 },
+    }).symbols;
+    const info = new Uint32Array([8, 0]); // LASTINPUTINFO { cbSize, dwTime }
+    return () => {
+      if (!user32.GetLastInputInfo(ptr(info))) return true;
+      // >>> 0 keeps the subtraction correct across GetTickCount's 49-day wrap.
+      return ((Number(kernel32.GetTickCount()) - info[1]!) >>> 0) < LOCAL_PRESENCE_MS;
+    };
+  } catch {
+    return () => true;
+  }
+}
+
 export async function runHost(spec: HostSpec, ctx: HostContext): Promise<never> {
   const cwd = resolveExistingDir(spec.cwd || process.cwd());
   const command = spec.command ?? '';
@@ -153,15 +188,20 @@ export async function runHost(spec: HostSpec, ctx: HostContext): Promise<never> 
       session.resize(c, r);
     };
 
+    const locallyPresent = makeLocalPresenceProbe();
+
     // Keystrokes go to the pty as raw bytes, Ctrl-C included, the way ssh
     // does it. The bytes are decoded through a streaming decoder so a
-    // multi-byte character split across reads survives.
+    // multi-byte character split across reads survives. The size take-back is
+    // gated on presence: stdin also carries bytes nobody typed (focus
+    // reports, terminal query replies), which must not steal the pty from a
+    // remote viewer.
     process.stdin.setRawMode(true);
     process.stdin.resume();
     const decoder = new TextDecoder();
     process.stdin.on('data', (chunk: Buffer) => {
       const { columns: c, rows: r } = process.stdout;
-      if (c && r && (c !== ptyCols || r !== ptyRows)) resizeToWindow(c, r);
+      if (locallyPresent() && c && r && (c !== ptyCols || r !== ptyRows)) resizeToWindow(c, r);
       const text = decoder.decode(chunk, { stream: true });
       if (text.length > 0) session.write(text);
     });
@@ -171,12 +211,16 @@ export async function runHost(spec: HostSpec, ctx: HostContext): Promise<never> 
     // follow the window. Compared against the window's own last size, not
     // the pty's: a remote viewer's resize must hold until the window
     // actually changes (or a key is typed here) — not be fought within
-    // 250ms.
+    // 250ms. Presence-gated like the stdin path: the system resizes windows
+    // on its own (display sleep, DPI changes), and only a change the local
+    // user could have made may take the pty. While away the remembered size
+    // goes stale on purpose — the first poll tick after the user returns
+    // sees the difference and takes the size back.
     let cols = process.stdout.columns;
     let rows = process.stdout.rows;
     setInterval(() => {
       const { columns: c, rows: r } = process.stdout;
-      if (c && r && (c !== cols || r !== rows)) {
+      if (locallyPresent() && c && r && (c !== cols || r !== rows)) {
         cols = c;
         rows = r;
         resizeToWindow(c, r);
