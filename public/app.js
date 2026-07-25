@@ -432,34 +432,38 @@ function installTouchLayer() {
 // long line accumulates there in full. A behind-the-cursor rewrite breaks
 // the diff's append-only assumption, and xterm re-sends the entire
 // accumulated line: typed text visibly repeats, again on every subsequent
-// autocorrect. Emptying the textarea whenever composition is idle leaves
-// the IME nothing committed to rewrite and caps any bad diff at the word in
-// progress. The clear is deferred one timer and abandoned if anything —
+// autocorrect. Trimming the textarea to its trailing word whenever
+// composition is idle caps what a rewrite can touch — and what a broken
+// diff can re-send — at a single word. The trailing word stays (rather
+// than emptying the field outright) because a field that empties after
+// every word makes the keyboard rebuild its state each time, a visible
+// flicker. The trim is deferred one timer and abandoned if anything —
 // composition, a keystroke, any value change — happened since it was
 // scheduled: xterm reads the textarea on zero-delay timers of its own, and
-// a clear landing between its before/after reads would send a spurious
+// a trim landing between its before/after reads would send a spurious
 // delete or drop a character.
 function installImeWorkaround() {
   if (!matchMedia('(pointer: coarse)').matches) return; // desktop IMEs diff fine; leave them alone
   const textarea = term.textarea;
   let composing = false;
   let keySeq = 0;
-  const scheduleClear = () => {
+  const scheduleTrim = () => {
     const value = textarea.value;
+    const keep = value.match(/\S*\s*$/)[0]; // trailing word, its whitespace included
+    if (keep === value) return;
     const seq = keySeq;
-    if (!value) return;
     setTimeout(() => {
-      if (!composing && keySeq === seq && textarea.value === value) textarea.value = '';
+      if (!composing && keySeq === seq && textarea.value === value) textarea.value = keep;
     }, 0);
   };
   textarea.addEventListener('keydown', () => { keySeq++; });
   textarea.addEventListener('compositionstart', () => { composing = true; });
   textarea.addEventListener('compositionend', () => {
     composing = false;
-    scheduleClear();
+    scheduleTrim();
   });
   textarea.addEventListener('blur', () => { composing = false; }); // xterm empties the textarea on blur itself
-  term.onData(scheduleClear);
+  term.onData(scheduleTrim);
 }
 
 function showViewTerm() {
