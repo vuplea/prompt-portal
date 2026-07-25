@@ -425,12 +425,50 @@ function installTouchLayer() {
   term.element.querySelector('.xterm-screen').append(layer);
 }
 
+// Android keyboards revise words they have already committed — Gboard's
+// autocorrect rewrites text behind the cursor. xterm gets no readable key
+// events on Android (every keystroke is keyCode 229); it recovers input by
+// diffing its hidden textarea, which it empties only on Enter or blur, so a
+// long line accumulates there in full. A behind-the-cursor rewrite breaks
+// the diff's append-only assumption, and xterm re-sends the entire
+// accumulated line: typed text visibly repeats, again on every subsequent
+// autocorrect. Emptying the textarea whenever composition is idle leaves
+// the IME nothing committed to rewrite and caps any bad diff at the word in
+// progress. The clear is deferred one timer and abandoned if anything —
+// composition, a keystroke, any value change — happened since it was
+// scheduled: xterm reads the textarea on zero-delay timers of its own, and
+// a clear landing between its before/after reads would send a spurious
+// delete or drop a character.
+function installImeWorkaround() {
+  if (!matchMedia('(pointer: coarse)').matches) return; // desktop IMEs diff fine; leave them alone
+  const textarea = term.textarea;
+  let composing = false;
+  let keySeq = 0;
+  const scheduleClear = () => {
+    const value = textarea.value;
+    const seq = keySeq;
+    if (!value) return;
+    setTimeout(() => {
+      if (!composing && keySeq === seq && textarea.value === value) textarea.value = '';
+    }, 0);
+  };
+  textarea.addEventListener('keydown', () => { keySeq++; });
+  textarea.addEventListener('compositionstart', () => { composing = true; });
+  textarea.addEventListener('compositionend', () => {
+    composing = false;
+    scheduleClear();
+  });
+  textarea.addEventListener('blur', () => { composing = false; }); // xterm empties the textarea on blur itself
+  term.onData(scheduleClear);
+}
+
 function showViewTerm() {
   document.body.dataset.view = 'term';
   if (!termOpened) {
     term.open($('#xterm'));
     termOpened = true;
     installTouchLayer();
+    installImeWorkaround();
   }
   renderSessionSelect();
   requestAnimationFrame(fitTerm);
