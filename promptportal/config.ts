@@ -26,6 +26,15 @@ export const isWindows = process.platform === 'win32';
 // spawn that fails loudly, rather than one that silently leaks.
 export const isCompiled = /^(?:[a-z]:[\\/]~bun[\\/]|[\\/]\$bunfs[\\/])/i.test(Bun.main);
 
+// Argv that re-invokes this program with `args` appended — the compiled/source
+// split above, in spawnable form. Anchored to this directory rather than
+// process.argv[1], which is not main.ts in every context (`bun test`).
+export function selfArgv(args: string[]): string[] {
+  return isCompiled
+    ? [process.execPath, ...args]
+    : [process.execPath, path.join(import.meta.dir, 'main.ts'), ...args];
+}
+
 // The workstation password's home on Windows: a generic credential in the
 // user's Credential Manager (lib/credential.ts), written by `promptportal set-password`
 // and read back by every session host and the launcher.

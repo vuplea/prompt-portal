@@ -5,6 +5,7 @@ import { readSecretFromStdin } from '../lib/secret';
 import {
   CliError, CREDENTIAL_TARGET, dropAutoloadedDotenv, env, isWindows, resolveNodeName,
 } from './config';
+import { runConsoleGuard } from './console';
 import { runHost, type HostContext, type HostSpec } from './host';
 import { runLauncher } from './launcher';
 import { normalizeHubUrl, warnIfCleartext } from './link';
@@ -20,6 +21,8 @@ import { setPassword } from './password';
 //   promptportal set-password        store the workstation password in Credential Manager (Windows)
 //
 // (internal)  promptportal run --spec <b64url-json>      host a session from a launcher spec
+// (internal)  promptportal console-guard <shell-pid>     hold a session console's codepages
+//                          at UTF-8 (Windows; see promptportal/console.ts)
 //
 // A session lives exactly as long as its `promptportal` process: close the window (or
 // kill it from the hub) and the shell dies with it.
@@ -138,6 +141,10 @@ try {
     case 'run':
       initLog('session');
       await hostSession(parseSpec(args.slice(1)));
+      break;
+    case 'console-guard':
+      initLog('console-guard');
+      await runConsoleGuard(Number(args[1]));
       break;
     case 'set-password':
       await setPassword();

@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { SESSION_PROTOCOL } from '../lib/protocol';
 import { isWindows, resolveExistingDir } from './config';
-import { disableNewlineAutoReturn } from './console';
+import { configureHostConsole } from './console';
 import { maintainLink, type Post } from './link';
 import { muteConsole, setLogTag } from './log';
 import { KILL_GRACE_MS, Session } from './session';
@@ -90,7 +90,7 @@ export async function runHost(spec: HostSpec, ctx: HostContext): Promise<never> 
     // output goes only to the log file. What must reach the user is written
     // straight to stdout as terminal output.
     muteConsole();
-    disableNewlineAutoReturn();
+    configureHostConsole();
   }
 
   const id = spec.id || crypto.randomUUID();

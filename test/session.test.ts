@@ -58,3 +58,49 @@ test('streams output live, replays it, and emits the exit frame on close', async
     expect(typeof exitCode).toBe('number');
   });
 }, 40000);
+
+// The console guard must undo codepage changes made by processes inside the
+// session (see runConsoleGuard in promptportal/console.ts). chcp both sets and
+// reports the codepages, so the whole exchange can run through the pty itself.
+// chcp's message text is localized; ": <n>" is its language-independent core,
+// and the bare `chcp` query echoes no digits, so a numeric match can only be
+// a response.
+const windowsTest = process.platform === 'win32' ? test : test.skip;
+windowsTest('holds the pty console codepages at UTF-8, through console ctrl events', async () => {
+  const session = new Session({ id: 't2', label: 't2', cwd: os.tmpdir(), command: '' });
+  const frames: Msg[] = [];
+  session.subscribe((msg) => frames.push(msg));
+  const output = () => frames.filter((f) => f.t === 'o').map((f) => String(f.d)).join('');
+
+  const guardCorrects = async (phase: string) => {
+    const from = output().length;
+    session.write('chcp 850\r');
+    await until(`chcp 850 ack (${phase})`, () => /:\s*850\b/.test(output().slice(from)));
+    // Re-ask until the guard has flipped it back.
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline && !/\b65001\b/.test(output().slice(from))) {
+      session.write('chcp\r');
+      await Bun.sleep(600);
+    }
+    expect(output().slice(from)).toMatch(/\b65001\b/);
+  };
+
+  await guardCorrects('fresh session');
+
+  // Codepage protection must outlive console-wide ctrl events, which reach
+  // every process attached to the pty console: Ctrl+C does not end the guard,
+  // and Ctrl+Break does — the guard cannot ignore it — which the host heals
+  // by restarting it (see spawnConsoleGuard). Raw \x03 through the pty does
+  // not raise the events in this harness, so raise both from inside the
+  // session.
+  const from = output().length;
+  session.write('Add-Type -Namespace T -Name K -MemberDefinition '
+    + '\'[DllImport("kernel32.dll")] public static extern bool GenerateConsoleCtrlEvent(uint t, uint p);\''
+    + '; [T.K]::GenerateConsoleCtrlEvent(0, 0); [T.K]::GenerateConsoleCtrlEvent(1, 0)\r');
+  await until('ctrl events raised', () => output().slice(from).includes('True'));
+  await Bun.sleep(500); // the events land async, and flush pending console input
+  await guardCorrects('after Ctrl+C');
+
+  session.close();
+  await until('exit frame', () => frames.some((f) => f.t === 'x'));
+}, 60000);
