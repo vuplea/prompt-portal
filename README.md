@@ -1,4 +1,4 @@
-# <img src="docs/icon.png" height="80" align="absmiddle" alt="PromptPortal icon">&nbsp; PromptPortal
+# <img src="docs/icon.png" height="80" align="absmiddle" alt="prompt-portal icon">&nbsp; prompt-portal
 
 Spawn a terminal window from your phone running on your PC; work remotely.
 Open any terminal window from your PC; pick it up from your phone.
@@ -50,7 +50,7 @@ Everything below runs on [Bun](https://bun.sh) >= 1.3.14; `bunx` comes with it.
 ## Windows workstation
 
 ```powershell
-bunx prompt-portal install --hub-url https://promptportal.example.com
+bunx prompt-portal install --hub-url https://prompt-portal.example.com
 ```
 
 It prompts for the workstation password (`--password` skips the prompt,
@@ -59,7 +59,7 @@ builds a native self-contained `prompt-portal.exe` into
 `%LOCALAPPDATA%\PromptPortal\bin`, persists the settings (user environment
 variables + Windows Credential Manager), registers a logon task that runs
 `prompt-portal launcher`, adds the exe to your PATH, and installs a Windows
-Terminal **PromptPortal profile** that opens a connected session in a tab.
+Terminal **prompt-portal profile** that opens a connected session in a tab.
 Re-run any time to change settings; it is idempotent.
 
 - **Update** (rebuild from the latest release, settings untouched, open
@@ -71,7 +71,7 @@ Re-run any time to change settings; it is idempotent.
   (`--hub-port`), and points the workstation at it. Publish it with e.g.
   `tailscale serve --bg 8080` and use the resulting URL from your phone.
 
-To make every terminal you open reachable remotely, set the **PromptPortal
+To make every terminal you open reachable remotely, set the **prompt-portal
 profile** as the Windows Terminal default. For terminals launched from a
 command line, use `prompt-portal -- <command>`. A session created from the
 phone opens as a window in the workstation's default terminal. macOS is not

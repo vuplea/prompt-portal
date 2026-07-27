@@ -584,7 +584,7 @@ async function install(cli: InstallCli): Promise<void> {
   waitProcessHolds('launcher', `"${exePath()}" launcher`);
 
   console.log('\nDone. The launcher is running. Host a session from any terminal with:  prompt-portal');
-  console.log("In Windows Terminal, the 'PromptPortal' profile opens a connected session.");
+  console.log("In Windows Terminal, the 'prompt-portal' profile opens a connected session.");
   console.log("Closing a session's window ends that session everywhere.");
   if (cli.installHub) {
     console.log(`The hub is serving on http://127.0.0.1:${cli.hubPort} (task '${HUB_TASK}', data in ${hubDataDir()}).`);
@@ -604,7 +604,7 @@ async function restartInstalledHub(): Promise<void> {
   console.log(`The hub is up on http://127.0.0.1:${port}.`);
 }
 
-// Adds a "PromptPortal" profile that opens a new hub-connected session (it
+// Adds a "prompt-portal" profile that opens a new hub-connected session (it
 // just runs `prompt-portal`). The whole fragment directory is rewritten, so a
 // stale profile from an older layout never lingers beside the new one. The
 // icon ships beside the exe so the profile points at a stable path.
@@ -619,7 +619,7 @@ function installWindowsTerminalFragment(): void {
   fs.rmSync(fragmentDir(), { recursive: true, force: true });
   fs.mkdirSync(fragmentDir(), { recursive: true });
   fs.writeFileSync(path.join(fragmentDir(), `${EXE_BASE}.json`), fragment);
-  console.log("Installed Windows Terminal fragment (new 'PromptPortal' profile).");
+  console.log("Installed Windows Terminal fragment (new 'prompt-portal' profile).");
 }
 
 // ------------------------------------------------------------- update
@@ -681,7 +681,7 @@ function uninstall(): void {
   editUserPath('Remove');
   if (fs.existsSync(fragmentDir())) {
     fs.rmSync(fragmentDir(), { recursive: true, force: true });
-    console.log("Removed the Windows Terminal 'PromptPortal' profile.");
+    console.log("Removed the Windows Terminal 'prompt-portal' profile.");
   }
   console.log(`Done. Left in place: the executable in ${binDir()} and any hub data in ${hubDataDir()}.`);
   console.log('Stopping running prompt-portal processes (open sessions end with them)...');
