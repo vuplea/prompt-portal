@@ -165,7 +165,7 @@ export class Session {
     this.terminal = this.proc.terminal!;
 
     // The pty console's codepages are held at UTF-8 for the session's life —
-    // see runConsoleGuard in promptportal/console.ts.
+    // see runConsoleGuard in cli/console.ts.
     this.stopConsoleGuard = spawnConsoleGuard(this.proc.pid);
 
     // Typed into the interactive shell rather than run via `shell -c`, so

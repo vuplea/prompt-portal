@@ -5,17 +5,17 @@ import path from 'node:path';
 import { CliError } from '../lib/errors';
 import { NODE_NAME_RE } from '../lib/protocol';
 
-// Configuration shared by the promptportal commands, read from the environment (the
+// Configuration shared by the prompt-portal commands, read from the environment (the
 // Windows installer persists these as user variables; the compose file passes
 // them to the `server` workstation container).
 
-// Re-exported so promptportal code keeps one import site for its user-facing error.
+// Re-exported so cli code keeps one import site for its user-facing error.
 export { CliError };
 
 export const isWindows = process.platform === 'win32';
 
-// Compiled (`bun build --compile`, the installed promptportal.exe) the executable is
-// the program; under `bun promptportal/main.ts` the runtime is bun itself, so the
+// Compiled (`bun build --compile`, the installed prompt-portal.exe) the executable is
+// the program; under `bun cli/main.ts` the runtime is bun itself, so the
 // script path has to be passed along to spawn another one, and the dotenv
 // autoload the compiled builds disable is in play (see dropAutoloadedDotenv).
 //
@@ -36,7 +36,7 @@ export function selfArgv(args: string[]): string[] {
 }
 
 // The workstation password's home on Windows: a generic credential in the
-// user's Credential Manager (lib/credential.ts), written by `promptportal set-password`
+// user's Credential Manager (lib/credential.ts), written by `prompt-portal set-password`
 // and read back by every session host and the launcher.
 export const CREDENTIAL_TARGET = 'PromptPortal';
 
@@ -50,16 +50,16 @@ export const env = {
   },
   get nodeName(): string { return process.env.PROMPTPORTAL_NODE_NAME ?? ''; },
   // The shell each session hosts. Empty means the platform default
-  // (powershell.exe on Windows, $SHELL/bash elsewhere) — see promptportal/session.ts.
+  // (powershell.exe on Windows, $SHELL/bash elsewhere) — see cli/session.ts.
   get shell(): string { return process.env.PROMPTPORTAL_SHELL ?? ''; },
 };
 
 // Bun autoloads .env files from a process's startup directory into process.env
 // before any of our code runs. Nothing here should answer to the directory a
-// terminal happens to be started in: not the shell or hub promptportal itself
+// terminal happens to be started in: not the shell or hub prompt-portal itself
 // picks, and not what the shells it hosts inherit. The shipped binaries are
 // compiled with --no-compile-autoload-dotenv and so never see those values; a
-// run from a clone (`bun promptportal/main.ts`) has no flag we can pass on the
+// run from a clone (`bun cli/main.ts`) has no flag we can pass on the
 // user's behalf, so it drops them instead — leaving both paths behaving alike.
 //
 // Every file Bun can autoload from `dir` counts, not the subset it picked:

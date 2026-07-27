@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { NODE_NAME_RE } from '../lib/protocol';
-import { CliError, resolveExistingDir, resolveNodeName } from '../promptportal/config';
+import { CliError, resolveExistingDir, resolveNodeName } from '../cli/config';
 
 describe('resolveNodeName', () => {
   afterEach(() => {

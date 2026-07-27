@@ -53,7 +53,7 @@ export function configureHostConsole(): void {
   const prevIn = Number(k32.GetConsoleCP());
   k32.SetConsoleOutputCP(CP_UTF8);
   k32.SetConsoleCP(CP_UTF8);
-  // In a pre-existing terminal (a direct `promptportal` run) the console — and its
+  // In a pre-existing terminal (a direct `prompt-portal` run) the console — and its
   // codepages — outlive this process, so what was found is put back on exit;
   // a hub-opened window dies with the host, where the restore is moot.
   // Console modes need no such care: shells re-assert theirs every prompt.
@@ -70,7 +70,7 @@ export function configureHostConsole(): void {
   k32.SetConsoleMode(handle, mode[0]! | DISABLE_NEWLINE_AUTO_RETURN);
 }
 
-// `promptportal console-guard <shell-pid>` (internal) — hold a session pty
+// `prompt-portal console-guard <shell-pid>` (internal) — hold a session pty
 // console's codepages at UTF-8, from a process of its own: SetConsoleCP acts
 // on the caller's attached console, and a host must stay attached to the
 // window it renders into.

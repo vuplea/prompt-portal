@@ -3,7 +3,7 @@ import type { ServerWebSocket } from 'bun';
 import { ClientError } from './errors';
 import { MAX_BUFFERED_BYTES, MAX_FIELD_CHARS, send, type Msg, type SessionInfo } from './protocol';
 
-// The hub's view of the workstation side. Every session is a `promptportal` process
+// The hub's view of the workstation side. Every session is a `prompt-portal` process
 // that dialed in on its own outbound WebSocket — the connection *is* the
 // session, so a session disappears the moment its process (and on Windows,
 // its terminal window) dies. Launchers are the one resident process per

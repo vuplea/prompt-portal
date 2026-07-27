@@ -4,12 +4,12 @@ import { promptHidden, readSecretFromStdin } from '../lib/secret';
 import { CliError, CREDENTIAL_TARGET, env, isWindows } from './config';
 import { normalizeHubUrl, warnIfCleartext } from './link';
 
-// `promptportal set-password` — store the workstation password in Windows Credential
-// Manager, where hosts and the launcher read it from, instead of an
-// environment variable. Piped input (the installer) or a hidden prompt; an
-// empty entry keeps the already-stored credential. The password is proved
-// against the configured hub before it is stored: a wrong one written here
-// would leave the launcher silently redialing forever.
+// `prompt-portal set-password` — store the workstation password in Windows
+// Credential Manager, where hosts and the launcher read it from, instead of an
+// environment variable. Piped input or a hidden prompt; an empty entry keeps
+// the already-stored credential. The password is proved against the
+// configured hub before it is stored: a wrong one written here would leave
+// the launcher silently redialing forever.
 
 export async function setPassword(): Promise<void> {
   if (!isWindows) {
@@ -23,7 +23,11 @@ export async function setPassword(): Promise<void> {
   // Keeping the stored password still verifies it, so a re-run proves the
   // hub link either way.
   const password = entered.length > 0 ? entered : stored!;
-  await verifyPassword(password);
+  if (env.hubUrl.length === 0) {
+    console.log('PROMPTPORTAL_HUB_URL is not set; storing the password unverified.');
+  } else {
+    await verifyWorkstationPassword(password, env.hubUrl);
+  }
   if (entered.length === 0) {
     console.log('Kept the stored workstation password.');
     return;
@@ -35,13 +39,11 @@ export async function setPassword(): Promise<void> {
 // The hub gates /session upgrades on the workstation password (lib/auth.ts),
 // so one dial proves it end-to-end — the same gate every session and launcher
 // link passes. No register frame is sent, so the probe creates nothing on the
-// hub; it upgrades, proves the password, and closes.
-function verifyPassword(password: string): Promise<void> {
-  if (env.hubUrl.length === 0) {
-    console.log('PROMPTPORTAL_HUB_URL is not set; storing the password unverified.');
-    return Promise.resolve();
-  }
-  const normalized = normalizeHubUrl(env.hubUrl);
+// hub; it upgrades, proves the password, and closes. Shared with the
+// installer (cli/install.ts), which proves the password before persisting
+// anything.
+export function verifyWorkstationPassword(password: string, hubUrl: string): Promise<void> {
+  const normalized = normalizeHubUrl(hubUrl);
   // A cleartext hub URL puts the password readable on the wire right here —
   // say so before sending it, the same warning the link prints.
   warnIfCleartext(normalized);

@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import os from 'node:os';
 
 import type { Msg } from '../lib/protocol';
-import { Session } from '../promptportal/session';
+import { Session } from '../cli/session';
 
 // One real shell on one real pty — slow (a shell start) but this is the
 // heart of the workstation, so it earns its seconds.
@@ -60,7 +60,7 @@ test('streams output live, replays it, and emits the exit frame on close', async
 }, 40000);
 
 // The console guard must undo codepage changes made by processes inside the
-// session (see runConsoleGuard in promptportal/console.ts). chcp both sets and
+// session (see runConsoleGuard in cli/console.ts). chcp both sets and
 // reports the codepages, so the whole exchange can run through the pty itself.
 // chcp's message text is localized; ": <n>" is its language-independent core,
 // and the bare `chcp` query echoes no digits, so a numeric match can only be

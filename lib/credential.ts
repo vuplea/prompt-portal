@@ -1,10 +1,11 @@
 import { CliError } from './errors';
 
 // Windows Credential Manager access (generic credentials in the user's
-// store), shared by the workstation (`promptportal set-password`, one credential) and
-// the hub (`hub set-password`, one per hub password). Keeps secrets out of
-// environment variables and the registry; note a stored credential stays
-// readable by any process running as this user, these ones included.
+// store), shared by the workstation (`prompt-portal set-password`, one
+// credential) and the hub (`prompt-portal hub set-password`, one per hub
+// password). Keeps secrets out of environment variables and the registry;
+// note a stored credential stays readable by any process running as this
+// user, these ones included.
 
 const CRED_TYPE_GENERIC = 1;
 const CRED_PERSIST_LOCAL_MACHINE = 2;
@@ -19,12 +20,13 @@ function advapi32() {
   return dlopen('advapi32.dll', {
     CredReadW: { args: [FFIType.ptr, FFIType.u32, FFIType.u32, FFIType.ptr], returns: FFIType.bool },
     CredWriteW: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.bool },
+    CredDeleteW: { args: [FFIType.ptr, FFIType.u32, FFIType.u32], returns: FFIType.bool },
     CredFree: { args: [FFIType.ptr], returns: FFIType.void },
   }).symbols;
 }
 
 // A null-terminated UTF-16LE buffer — the string form every Win32 *W API
-// (here and in promptportal/window.ts) takes.
+// (here and in cli/window.ts) takes.
 export function utf16z(value: string): Buffer {
   return Buffer.from(value + '\0', 'utf16le');
 }
@@ -68,4 +70,12 @@ export function writeCredential(target: string, secret: string): void {
   if (!api.CredWriteW(ptr(cred), 0)) {
     throw new CliError(`could not store the credential "${target}" in Credential Manager`);
   }
+}
+
+// Remove a stored credential (`prompt-portal uninstall`). Absent counts as
+// removed: the point is the end state, and uninstall must be idempotent.
+export function deleteCredential(target: string): void {
+  const { ptr } = require('bun:ffi') as typeof import('bun:ffi');
+  const targetName = utf16z(target);
+  advapi32().CredDeleteW(ptr(targetName), CRED_TYPE_GENERIC, 0);
 }

@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import fs from 'node:fs';
 
 import { readCredential } from '../lib/credential';
@@ -12,37 +13,42 @@ import { normalizeHubUrl, warnIfCleartext } from './link';
 import { initLog } from './log';
 import { setPassword } from './password';
 
-//   promptportal [label] [--cwd DIR] [-- CMD ARGS...]    host a session in this terminal
+//   prompt-portal [label] [--cwd DIR] [-- CMD ARGS...]    host a session in this terminal
 //                          (everything after -- is the command, verbatim —
 //                           no quoting)
-//   promptportal launcher            run the workstation launcher (a logon task on
+//   prompt-portal launcher           run the workstation launcher (a logon task on
 //                          Windows, the container entrypoint) so sessions can
 //                          be started from the hub
-//   promptportal set-password        store the workstation password in Credential Manager (Windows)
+//   prompt-portal hub [...]          run the hub (see server.ts; --help for flags)
+//   prompt-portal set-password       store the workstation password in Credential Manager (Windows)
+//   prompt-portal install|update|uninstall   manage the Windows install (see cli/install.ts)
 //
-// (internal)  promptportal run --spec <b64url-json>      host a session from a launcher spec
-// (internal)  promptportal console-guard <shell-pid>     hold a session console's codepages
-//                          at UTF-8 (Windows; see promptportal/console.ts)
+// (internal)  prompt-portal run --spec <b64url-json>      host a session from a launcher spec
+// (internal)  prompt-portal console-guard <shell-pid>     hold a session console's codepages
+//                          at UTF-8 (Windows; see cli/console.ts)
 //
-// A session lives exactly as long as its `promptportal` process: close the window (or
-// kill it from the hub) and the shell dies with it.
+// A session lives exactly as long as its `prompt-portal` process: close the
+// window (or kill it from the hub) and the shell dies with it.
 
-const USAGE = 'promptportal [label] [--cwd DIR] [-- CMD ARGS...] | promptportal launcher | promptportal set-password';
+const USAGE = 'prompt-portal [label] [--cwd DIR] [-- CMD ARGS...] | prompt-portal launcher | prompt-portal hub'
+  + ' | prompt-portal set-password | prompt-portal install|update|uninstall';
 
 const args = process.argv.slice(2);
 
 // First thing, so every read below — and every shell a session hosts — sees an
 // environment the startup directory's .env had no say in. Safe here because no
-// module reads configuration while being imported.
-dropAutoloadedDotenv();
+// module reads configuration while being imported. The hub subcommand is the
+// one exception: it spawns no shells and `bun server.ts` autoloads .env, so
+// `prompt-portal hub` keeps that behavior rather than differing from it.
+if (args[0] !== 'hub') dropAutoloadedDotenv();
 
 // The workstation password is kept out of this process's environment:
 // same-user processes can read /proc/<pid>/environ, which deleting the
 // variable does not clear. The launcher hands it to headless hosts over stdin
 // (see workstation-entrypoint.sh); on Windows it lives in Credential Manager
-// (`promptportal set-password`, written by the installer). The delete below still clears
-// a PROMPTPORTAL_WORKSTATION_PASSWORD set directly in the environment, so a
-// session's shell doesn't inherit it.
+// (`prompt-portal set-password`, written by the installer). The delete below
+// still clears a PROMPTPORTAL_WORKSTATION_PASSWORD set directly in the
+// environment, so a session's shell doesn't inherit it.
 async function resolvePassword(): Promise<string> {
   let password = env.password;
   delete process.env.PROMPTPORTAL_WORKSTATION_PASSWORD;
@@ -81,7 +87,7 @@ function requirePassword(ctx: HostContext): HostContext {
   if (ctx.password.length > 0) return ctx;
   throw new CliError('PROMPTPORTAL_HUB_URL is set but no workstation password was found'
     + (isWindows
-      ? ' (run `promptportal set-password`, or set PROMPTPORTAL_WORKSTATION_PASSWORD)'
+      ? ' (run `prompt-portal set-password`, or set PROMPTPORTAL_WORKSTATION_PASSWORD)'
       : ' (set PROMPTPORTAL_WORKSTATION_PASSWORD)'));
 }
 
@@ -127,7 +133,7 @@ function parseSpec(rest: string[]): HostSpec {
 }
 
 // The launcher and session hosts log to a file as well as the console (see
-// promptportal/log.ts) — initialized before anything can fail, so a launcher dying at
+// cli/log.ts) — initialized before anything can fail, so a launcher dying at
 // logon inside its invisible conhost still leaves a trace.
 try {
   switch (args[0]) {
@@ -149,16 +155,30 @@ try {
     case 'set-password':
       await setPassword();
       break;
+    case 'hub': {
+      const { runHub } = await import('../server');
+      // 'serving' means the listener is up: park forever — the server owns
+      // the process from here, exactly like `bun server.ts`.
+      if (await runHub(args.slice(1)) === 'serving') await new Promise<never>(() => {});
+      break;
+    }
+    case 'install':
+    case 'update':
+    case 'uninstall': {
+      const { runInstaller } = await import('./install');
+      await runInstaller(args[0], args.slice(1));
+      break;
+    }
     case '-h':
     case '--help':
       console.log(USAGE);
       break;
     default:
-      // Headless hosting is reserved for launcher specs (`promptportal run`): a bare
-      // `promptportal` in a script or healthcheck must not silently spawn an invisible
-      // shell.
+      // Headless hosting is reserved for launcher specs (`prompt-portal run`):
+      // a bare `prompt-portal` in a script or healthcheck must not silently
+      // spawn an invisible shell.
       if (process.stdin.isTTY !== true) {
-        throw new CliError('promptportal hosts a session in the terminal it runs in, and no terminal is attached'
+        throw new CliError('prompt-portal hosts a session in the terminal it runs in, and no terminal is attached'
           + ` — usage: ${USAGE}`);
       }
       initLog('session');

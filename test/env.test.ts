@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { autoloadedEnvKeys, dropAutoloadedDotenv } from '../promptportal/config';
+import { autoloadedEnvKeys, dropAutoloadedDotenv } from '../cli/config';
 
 // autoloadedEnvKeys covers the keys Bun can autoload from a directory, so
 // dropAutoloadedDotenv can clear them at startup. These cover the files it

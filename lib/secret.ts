@@ -1,6 +1,6 @@
 import { CliError } from './errors';
 
-// Reading secrets from the user, shared by `promptportal set-password` and
+// Reading secrets from the user, shared by `prompt-portal set-password` and
 // `hub set-password`: a hidden prompt on a TTY, or piped stdin (the installer,
 // the launcher's pipe to a headless host, the entrypoint's heredoc).
 

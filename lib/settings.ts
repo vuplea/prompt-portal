@@ -3,13 +3,14 @@ import { CliError } from './errors';
 import { promptHidden } from './secret';
 
 // Hub process settings: a small CLI and the two passwords. Flags exist
-// because a hub installed as a Windows background task (windows/install.ps1)
-// has no per-process environment channel, so the task passes its settings on
-// the command line; each flag overrides its environment variable.
+// because a hub installed as a Windows background task (`prompt-portal
+// install --install-hub`) has no per-process environment channel, so the task
+// passes its settings on the command line; each flag overrides its
+// environment variable.
 
 export const isWindows = process.platform === 'win32';
 
-export const HUB_USAGE = 'hub [--port N] [--host ADDR] [--data DIR] | hub set-password';
+export const HUB_USAGE = 'prompt-portal hub [--port N] [--host ADDR] [--data DIR] | prompt-portal hub set-password';
 
 export interface HubCli {
   port?: number;
@@ -53,7 +54,7 @@ export function parseHubCli(argv: string[]): HubCli {
 // The two secrets the hub gates on (lib/auth.ts). Each comes from its
 // environment variable, or — on Windows, where the hub can run as an
 // installed background task — from Credential Manager, written by
-// `hub set-password`. The environment wins, so a container or a dev run is
+// `prompt-portal hub set-password`. The environment wins, so a container or a dev run is
 // never surprised by a stored credential.
 const HUB_PASSWORDS = [
   {
@@ -71,6 +72,9 @@ const HUB_PASSWORDS = [
     promptLabel: 'Workstation password (workstations register with it)',
   },
 ] as const;
+
+// The hub credentials' Credential Manager targets, for the uninstaller.
+export const HUB_CREDENTIAL_TARGETS = HUB_PASSWORDS.map((cred) => cred.target);
 
 // Why a password is unusable, phrased to follow its name — or null if it is
 // fine. Each password gates a shell on every workstation: the placeholder is
@@ -91,7 +95,7 @@ export function resolveHubPasswords(): { webaccess: string; workstation: string;
     const value = process.env[cred.envVar] || (isWindows ? readCredential(cred.target) ?? '' : '');
     if (!value) {
       problems.push(`Missing ${cred.envVar} — set the environment variable`
-        + (isWindows ? ' or run "hub set-password"' : ''));
+        + (isWindows ? ' or run "prompt-portal hub set-password"' : ''));
       continue;
     }
     const problem = passwordProblem(value);
@@ -104,7 +108,7 @@ export function resolveHubPasswords(): { webaccess: string; workstation: string;
   return { ...resolved, problems };
 }
 
-// `hub set-password` — store both passwords in Windows Credential Manager,
+// `prompt-portal hub set-password` — store both passwords in Windows Credential Manager,
 // where a hub installed as a background task reads them from. Piped input
 // (the installer: web-access then workstation, one per line) or hidden
 // prompts. An empty entry keeps the already-stored credential, so a re-run

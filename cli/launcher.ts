@@ -4,10 +4,10 @@ import { maintainLink } from './link';
 import type { HostContext } from './host';
 import { openHostWindow } from './window';
 
-// `promptportal launcher` — the one resident process per workstation, and the only
+// `prompt-portal launcher` — the one resident process per workstation, and the only
 // reason one exists: starting sessions from the phone. It keeps a single
 // outbound WebSocket to the hub and answers create requests by spawning a
-// `promptportal` host — in a terminal window on a Windows desktop (the window is the
+// `prompt-portal` host — in a terminal window on a Windows desktop (the window is the
 // session), headless in the workstation container. It relays no terminal
 // traffic and owns nothing: stopping it strands no sessions.
 

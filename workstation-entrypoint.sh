@@ -66,6 +66,6 @@ install_tool "Codex" https://chatgpt.com/codex/install.sh sh
 # container's lifetime. (PROMPTPORTAL_PASSWORD_STDIN tells the launcher to read
 # the secret from stdin, and it hands it to each session host the same way.)
 export PROMPTPORTAL_PASSWORD_STDIN=1
-exec /usr/bin/tini -- /usr/local/bin/promptportal launcher <<PROMPTPORTAL_PASSWORD
+exec /usr/bin/tini -- /usr/local/bin/prompt-portal launcher <<PROMPTPORTAL_PASSWORD
 $PASSWORD
 PROMPTPORTAL_PASSWORD
