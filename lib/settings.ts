@@ -56,25 +56,29 @@ export function parseHubCli(argv: string[]): HubCli {
 // installed background task — from Credential Manager, written by
 // `prompt-portal hub set-password`. The environment wins, so a container or a dev run is
 // never surprised by a stored credential.
+// The hub credentials' Credential Manager targets, named for the installer
+// (which stores each secret under the right one) and listed for the
+// uninstaller (which removes them all).
+export const HUB_WEBACCESS_TARGET = 'PromptPortalHub/webaccess';
+export const HUB_WORKSTATION_TARGET = 'PromptPortalHub/workstation';
+export const HUB_CREDENTIAL_TARGETS = [HUB_WEBACCESS_TARGET, HUB_WORKSTATION_TARGET];
+
 const HUB_PASSWORDS = [
   {
     key: 'webaccess',
     label: 'web-access',
     envVar: 'PROMPTPORTAL_WEBACCESS_PASSWORD',
-    target: 'PromptPortalHub/webaccess',
+    target: HUB_WEBACCESS_TARGET,
     promptLabel: 'Web-access password (browsers sign in with it)',
   },
   {
     key: 'workstation',
     label: 'workstation',
     envVar: 'PROMPTPORTAL_WORKSTATION_PASSWORD',
-    target: 'PromptPortalHub/workstation',
+    target: HUB_WORKSTATION_TARGET,
     promptLabel: 'Workstation password (workstations register with it)',
   },
 ] as const;
-
-// The hub credentials' Credential Manager targets, for the uninstaller.
-export const HUB_CREDENTIAL_TARGETS = HUB_PASSWORDS.map((cred) => cred.target);
 
 // Why a password is unusable, phrased to follow its name — or null if it is
 // fine. Each password gates a shell on every workstation: the placeholder is

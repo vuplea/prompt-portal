@@ -5,17 +5,23 @@
 # (uid 1000). The hub image is its own build (Dockerfile.hub).
 
 # --------------------------------------------------------- prompt-portal binary
-# The workstation binary (see cli/), compiled by Bun into one self-contained
-# file. `bun build --compile` targets the stage's own architecture, so
-# multi-arch builds need no target juggling. The two autoload flags stop the
-# built binary from reading the directory it starts in: --no-compile-autoload-dotenv
+# The complete prompt-portal binary (see cli/), compiled by Bun into one
+# self-contained file — server.ts and its embedded assets included, so the
+# `hub` subcommand works here like everywhere else, not just in the hub image.
+# `bun build --compile` targets the stage's own architecture, so multi-arch
+# builds need no target juggling. The two autoload flags stop the built
+# binary from reading the directory it starts in: --no-compile-autoload-dotenv
 # so a session host cannot pass that project's .env on to hosted shells, and
 # --no-compile-autoload-bunfig because a `preload` in a bunfig.toml there would
 # run before the program does.
 FROM oven/bun:1.3 AS prompt-portal-build
 WORKDIR /src
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
+COPY server.ts ./
 COPY lib ./lib
 COPY cli ./cli
+COPY public ./public
 RUN bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig \
     ./cli/main.ts --outfile /out/prompt-portal
 

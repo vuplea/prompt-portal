@@ -72,10 +72,12 @@ export function writeCredential(target: string, secret: string): void {
   }
 }
 
-// Remove a stored credential (`prompt-portal uninstall`). Absent counts as
-// removed: the point is the end state, and uninstall must be idempotent.
-export function deleteCredential(target: string): void {
+// Remove a stored credential (`prompt-portal uninstall`). Returns whether
+// Windows deleted it — the caller only asks for credentials it just read, so
+// false means the secret is still in the store and must be reported, not
+// papered over.
+export function deleteCredential(target: string): boolean {
   const { ptr } = require('bun:ffi') as typeof import('bun:ffi');
   const targetName = utf16z(target);
-  advapi32().CredDeleteW(ptr(targetName), CRED_TYPE_GENERIC, 0);
+  return !!advapi32().CredDeleteW(ptr(targetName), CRED_TYPE_GENERIC, 0);
 }

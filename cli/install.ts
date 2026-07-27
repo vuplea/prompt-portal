@@ -4,8 +4,11 @@ import path from 'node:path';
 import { deleteCredential, readCredential, writeCredential } from '../lib/credential';
 import { NODE_NAME_RE } from '../lib/protocol';
 import { promptHidden } from '../lib/secret';
-import { HUB_CREDENTIAL_TARGETS, passwordProblem } from '../lib/settings';
+import {
+  HUB_CREDENTIAL_TARGETS, HUB_WEBACCESS_TARGET, HUB_WORKSTATION_TARGET, passwordProblem,
+} from '../lib/settings';
 import { CliError, CREDENTIAL_TARGET, isCompiled, isWindows, resolveNodeName } from './config';
+import { normalizeHubUrl } from './link';
 import { verifyWorkstationPassword } from './password';
 
 // `prompt-portal install|update|uninstall` — manage the Windows install:
@@ -74,9 +77,12 @@ const packageRoot = () => path.dirname(import.meta.dir);
 
 // Run a PowerShell script, values passed via environment variables (PP_*) —
 // no quoting or encoding pitfalls — and the script itself via -EncodedCommand
-// for the same reason. Returns stdout; throws on a non-zero exit unless told
-// the exit code carries meaning.
-function ps(script: string, env: Record<string, string> = {}, { check = true } = {}): { code: number; out: string } {
+// for the same reason. Returns stdout. Exit 0 always means success; a script
+// whose negative outcome is expected (task absent, nothing to change) signals
+// it with the distinct `exit 3`, allowed per call — so a PowerShell failure
+// (any other exit) always throws instead of masquerading as the negative.
+const PS_NEGATIVE = 3;
+function ps(script: string, env: Record<string, string> = {}, { allow = [] as number[] } = {}): { code: number; out: string } {
   // 'Stop' turns cmdlet failures into terminating errors, so they surface as
   // a non-zero exit instead of scrolling past while the script "succeeds";
   // steps that expect absence opt out per call with -ErrorAction.
@@ -92,16 +98,17 @@ function ps(script: string, env: Record<string, string> = {}, { check = true } =
     stderr: 'pipe',
   });
   const out = result.stdout.toString().trim();
-  if (check && result.exitCode !== 0) {
+  const code = result.exitCode ?? -1;
+  if (code !== 0 && !allow.includes(code)) {
     const detail = (result.stderr.toString().trim() || out).split('\n').slice(0, 8).join('\n');
-    throw new CliError(`PowerShell step failed (exit ${result.exitCode}):\n${script.trim().split('\n')[0]}...\n${detail}`);
+    throw new CliError(`PowerShell step failed (exit ${code}):\n${script.trim().split('\n')[0]}...\n${detail}`);
   }
-  return { code: result.exitCode ?? -1, out };
+  return { code, out };
 }
 
 function taskExists(name: string): boolean {
-  return ps(`if (Get-ScheduledTask -TaskName $env:PP_TASK -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }`,
-    { PP_TASK: name }, { check: false }).code === 0;
+  return ps(`if (Get-ScheduledTask -TaskName $env:PP_TASK -ErrorAction SilentlyContinue) { exit 0 } else { exit ${PS_NEGATIVE} }`,
+    { PP_TASK: name }, { allow: [PS_NEGATIVE] }).code === 0;
 }
 
 function stopTask(name: string): void {
@@ -119,7 +126,7 @@ function unregisterTask(name: string): boolean {
       Unregister-ScheduledTask -TaskName $env:PP_TASK -Confirm:$false
       exit 0
     }
-    exit 1`, { PP_TASK: name }, { check: false }).code === 0;
+    exit ${PS_NEGATIVE}`, { PP_TASK: name }, { allow: [PS_NEGATIVE] }).code === 0;
 }
 
 // Register a resident process to run at logon, windowless. conhost --headless
@@ -144,11 +151,10 @@ function registerHeadlessLogonTask(name: string, commandLine: string, descriptio
   console.log(`Registered scheduled task '${name}' (runs at logon).`);
 }
 
-// The task's stored command line, to recover settings (the hub's --port) on
-// update. Empty when the task does not exist.
+// The task's stored command line, to recover settings (the hub's --port).
+// Callers gate on taskExists, so the task is expected to be there.
 function taskArguments(name: string): string {
-  return ps(`(Get-ScheduledTask -TaskName $env:PP_TASK -ErrorAction SilentlyContinue).Actions[0].Arguments`,
-    { PP_TASK: name }, { check: false }).out;
+  return ps(`(Get-ScheduledTask -TaskName $env:PP_TASK).Actions[0].Arguments`, { PP_TASK: name }).out;
 }
 
 // Stop the resident copies of the executable — the launcher and the hub, told
@@ -161,22 +167,26 @@ function taskArguments(name: string): string {
 // company field ("Oven"), not the install path, so a resident left running
 // from an old build is caught too.
 function stopResidents(): void {
-  ps(`
+  const { out } = ps(`
     $procs = @(Get-Process $env:PP_NAME -ErrorAction SilentlyContinue | Where-Object { $_.Company -eq 'Oven' })
     foreach ($p in $procs) {
       $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId=$($p.Id)" -ErrorAction SilentlyContinue).CommandLine
       if ($cmd -and (($cmd -replace '^\\s*(?:"[^"]+"|\\S+)\\s*', '') -match '^(launcher|hub)(\\s|$)')) {
-        Write-Output "stopping resident pid $($p.Id)"
+        Write-Output "Stopping the running $($cmd -replace '^\\s*(?:"[^"]+"|\\S+)\\s*', '' -replace '\\s.*$', '') (pid $($p.Id))..."
         Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
         Wait-Process -Id $p.Id -Timeout 10 -ErrorAction SilentlyContinue
       }
     }
     exit 0`, { PP_NAME: EXE_BASE });
+  if (out) console.log(out);
 }
 
 // Uninstall only: stop every running copy — launcher, hub, and session hosts
-// (open sessions end with them) — except this process itself, which may be a
-// session being uninstalled from.
+// (open sessions end with them). Runs last, after all bookkeeping: the
+// terminal the uninstall itself runs in may be one of those sessions, and
+// killing its host ends this very command's console. The pid exclusion
+// spares only the uninstall process itself (when run from the installed
+// executable), not the session hosting it — nothing can.
 function stopAll(): void {
   ps(`
     Get-Process $env:PP_NAME -ErrorAction SilentlyContinue |
@@ -202,7 +212,7 @@ function editUserPath(action: 'Add' | 'Remove'): void {
       $present = $entries -contains $dir
       if ($env:PP_ACTION -eq 'Add' -and -not $present) { $updated = @($entries) + $dir }
       elseif ($env:PP_ACTION -eq 'Remove' -and $present) { $updated = @($entries | Where-Object { $_ -ne $dir }) }
-      else { exit 1 }
+      else { exit ${PS_NEGATIVE} }
       $kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
       if ($envKey.GetValueNames() -contains 'Path') { $kind = $envKey.GetValueKind('Path') }
       $envKey.SetValue('Path', (@($updated) -join ';'), $kind)
@@ -212,7 +222,7 @@ function editUserPath(action: 'Add' | 'Remove'): void {
       exit 0
     } finally {
       $envKey.Close()
-    }`, { PP_DIR: binDir(), PP_ACTION: action }, { check: false }).code === 0;
+    }`, { PP_DIR: binDir(), PP_ACTION: action }, { allow: [PS_NEGATIVE] }).code === 0;
   if (!changed) return;
   if (action === 'Add') console.log(`Added ${binDir()} to user PATH (restart shells to pick up \`prompt-portal\`).`);
   else console.log(`Removed ${binDir()} from user PATH.`);
@@ -224,22 +234,21 @@ function setUserEnvVar(name: string, value: string | null): void {
     { PP_NAME: name, PP_VALUE: value ?? '' });
 }
 
+// An unset variable prints nothing and still exits 0, so a failure here is a
+// real failure.
 function getEnvVar(name: string, scope: 'User' | 'Machine'): string {
-  return ps(`[Environment]::GetEnvironmentVariable($env:PP_NAME, '${scope}')`, { PP_NAME: name }, { check: false }).out;
+  return ps(`[Environment]::GetEnvironmentVariable($env:PP_NAME, '${scope}')`, { PP_NAME: name }).out;
 }
 
 // ------------------------------------------------------------------ build
 
-// The Bun that compiles the executable. Only source runs build: the running
-// Bun is the one embedded into the output (`bun build --compile`), so its
-// version is exactly Bun.version — checked against the floor Bun.spawn's
-// `terminal` option (the pty every session runs in) needs. An old Bun would
-// yield an executable whose sessions die at spawn.
+// The Bun that compiles the executable. Only source runs reach here
+// (runInstaller gates out the compiled executable): the running Bun is the
+// one embedded into the output (`bun build --compile`), so its version is
+// exactly Bun.version — checked against the floor Bun.spawn's `terminal`
+// option (the pty every session runs in) needs. An old Bun would yield an
+// executable whose sessions die at spawn.
 function buildBun(): string {
-  if (isCompiled) {
-    throw new CliError('install and update rebuild the executable from source'
-      + ' — run `bunx prompt-portal@latest ' + process.argv.slice(2).join(' ') + '` instead');
-  }
   const version = Bun.version.replace(/[-+].*$/, '').split('.').map(Number);
   const older = version[0]! !== MIN_BUN[0] ? version[0]! < MIN_BUN[0]
     : version[1]! !== MIN_BUN[1] ? version[1]! < MIN_BUN[1] : version[2]! < MIN_BUN[2];
@@ -257,10 +266,13 @@ function buildBun(): string {
 function buildStagedExecutable(): void {
   const root = packageRoot();
   // server.ts embeds the @xterm assets out of node_modules, which the bunx
-  // cache always has but a bare clone may not.
+  // cache always has but a bare clone may not. bun.lock ships in the package,
+  // so the versions are pinned either way.
   if (!fs.existsSync(path.join(root, 'node_modules', '@xterm', 'xterm'))) {
     console.log('Installing package dependencies...');
-    const install = Bun.spawnSync({ cmd: [buildBun(), 'install'], cwd: root, stdout: 'inherit', stderr: 'inherit' });
+    const install = Bun.spawnSync({
+      cmd: [buildBun(), 'install', '--frozen-lockfile'], cwd: root, stdout: 'inherit', stderr: 'inherit',
+    });
     if (install.exitCode !== 0) throw new CliError('bun install failed; see output above.');
   }
   console.log(`\nBuilding ${EXE_BASE}.exe...`);
@@ -308,23 +320,35 @@ function installStagedExecutable(): void {
 
 // ------------------------------------------------------------ verification
 
+// The one executable serves several roles, so "is it running" is only
+// meaningful per role: this PS pipeline fragment selects the live processes
+// of the installed executable whose first argument is $env:PP_ROLE. Without
+// the role filter, a running hub would satisfy the launcher's come-up check
+// (and vice versa), and the checks would prove nothing.
+const ROLE_PROCS = `@(Get-CimInstance Win32_Process -Filter "Name='$env:PP_EXENAME'" -ErrorAction SilentlyContinue |
+      Where-Object { $_.ExecutablePath -eq $env:PP_EXE -and $_.CommandLine -and
+        (($_.CommandLine -replace '^\\s*(?:"[^"]+"|\\S+)\\s*', '') -match ('^{0}(\\s|$)' -f $env:PP_ROLE)) })`;
+
+function roleEnv(role: 'launcher' | 'hub'): Record<string, string> {
+  return { PP_EXENAME: `${EXE_BASE}.exe`, PP_EXE: exePath(), PP_ROLE: role };
+}
+
 // Prove a headless task's process came up and stayed up. The task runs it
 // with no window, so a startup error (bad config) dies invisibly — the only
 // signal is the process holding past the first couple of seconds.
-function waitProcessHolds(what: string, hint: string): void {
+function waitProcessHolds(role: 'launcher' | 'hub', hint: string): void {
   const holds = ps(`
     $deadline = (Get-Date).AddSeconds(15)
     while ((Get-Date) -lt $deadline) {
-      $proc = Get-Process $env:PP_NAME -ErrorAction SilentlyContinue |
-        Where-Object { $_.Path -eq $env:PP_EXE } | Select-Object -First 1
+      $proc = ${ROLE_PROCS} | Select-Object -First 1
       if ($proc) {
         Start-Sleep -Seconds 2   # a config error exits within moments of starting
-        if (-not $proc.HasExited) { exit 0 }
+        if (Get-Process -Id $proc.ProcessId -ErrorAction SilentlyContinue) { exit 0 }
       }
       Start-Sleep -Milliseconds 500
     }
-    exit 1`, { PP_NAME: EXE_BASE, PP_EXE: exePath() }, { check: false }).code === 0;
-  if (!holds) throw new CliError(`The ${what} did not come up. Run ${hint} in a terminal to see the error.`);
+    exit ${PS_NEGATIVE}`, roleEnv(role), { allow: [PS_NEGATIVE] }).code === 0;
+  if (!holds) throw new CliError(`The ${role} did not come up. Run ${hint} in a terminal to see the error.`);
 }
 
 // Prove the headless hub came up: it must both answer HTTP and still be
@@ -339,12 +363,10 @@ async function waitHubHolds(port: number, hint: string): Promise<void> {
       .then(() => true, () => false);
     if (answered) {
       await Bun.sleep(2000); // a bind failure kills the hub within moments
-      const holds = ps(`
-        if (@(Get-Process $env:PP_NAME -ErrorAction SilentlyContinue |
-            Where-Object { $_.Path -eq $env:PP_EXE }).Count -gt 0) { exit 0 } else { exit 1 }`,
-        { PP_NAME: EXE_BASE, PP_EXE: exePath() }, { check: false }).code === 0;
+      const holds = ps(`if (${ROLE_PROCS}.Count -gt 0) { exit 0 } else { exit ${PS_NEGATIVE} }`,
+        roleEnv('hub'), { allow: [PS_NEGATIVE] }).code === 0;
       if (holds) return;
-      throw new CliError(`Port ${port} answers but ${exePath()} is not running — another service likely holds`
+      throw new CliError(`Port ${port} answers but no ${exePath()} hub is running — another service likely holds`
         + ` the port (pick a different --hub-port), or the hub crashed at startup.`
         + ` Run ${hint} in a terminal to see the error.`);
     }
@@ -412,6 +434,10 @@ async function install(cli: InstallCli): Promise<void> {
     }
     cli.hubUrl = `http://127.0.0.1:${cli.hubPort}`;
   }
+  // Validation only — the URL is persisted as given, and every consumer
+  // normalizes at use. A malformed --hub-url must fail here, before anything
+  // is stored, stopped, or swapped.
+  normalizeHubUrl(cli.hubUrl);
   if (cli.webaccessPassword && !cli.installHub) {
     throw new CliError('--webaccess-password configures the hub; it needs --install-hub');
   }
@@ -445,13 +471,13 @@ async function install(cli: InstallCli): Promise<void> {
   if (cli.installHub) {
     webaccess = await collectSecret(cli.webaccessPassword,
       'Web-access password (browsers sign in with it)',
-      readCredential(HUB_CREDENTIAL_TARGETS[0]!) !== null, 'web-access');
+      readCredential(HUB_WEBACCESS_TARGET) !== null, 'web-access');
     if (webaccess !== null) {
       const problem = passwordProblem(webaccess);
       if (problem) throw new CliError(`the web-access password ${problem}`);
     }
   }
-  const hubHasWorkstation = readCredential(HUB_CREDENTIAL_TARGETS[1]!) !== null;
+  const hubHasWorkstation = readCredential(HUB_WORKSTATION_TARGET) !== null;
   const workstationStored = readCredential(CREDENTIAL_TARGET);
   const entered = await collectSecret(cli.password,
     'Workstation password (workstations register with it)',
@@ -465,7 +491,7 @@ async function install(cli: InstallCli): Promise<void> {
   // hub's stored copy of the same secret serves too (and is re-stored under
   // the workstation target below).
   const workstationPassword = entered ?? workstationStored
-    ?? (cli.installHub ? readCredential(HUB_CREDENTIAL_TARGETS[1]!) : null);
+    ?? (cli.installHub ? readCredential(HUB_WORKSTATION_TARGET) : null);
   if (workstationPassword === null) throw new CliError('no workstation password given and none stored');
 
   // Build before anything stops or swaps, so a failed build tears nothing down.
@@ -479,18 +505,28 @@ async function install(cli: InstallCli): Promise<void> {
     await verifyWorkstationPassword(workstationPassword, cli.hubUrl);
   }
 
+  const strayHubTask = !cli.installHub && taskExists(HUB_TASK);
   if (cli.installHub) {
     // Both hub secrets go to Credential Manager, before the swap: bad input
-    // must abort while the old install still runs untouched.
-    if (webaccess !== null) writeCredential(HUB_CREDENTIAL_TARGETS[0]!, webaccess);
-    if (entered !== null) writeCredential(HUB_CREDENTIAL_TARGETS[1]!, entered);
+    // must abort while the old install still runs untouched. The hub's
+    // workstation copy is written whenever it is missing — even on "keep the
+    // stored one", which can name a credential only the workstation half has
+    // (an earlier install without --install-hub); a hub starting without it
+    // would die at resolveHubPasswords.
+    if (webaccess !== null) writeCredential(HUB_WEBACCESS_TARGET, webaccess);
+    if (entered !== null || !hubHasWorkstation) writeCredential(HUB_WORKSTATION_TARGET, workstationPassword);
     console.log('Stored the hub passwords in Credential Manager.');
-  } else if (taskExists(HUB_TASK)) {
+  } else if (strayHubTask) {
     console.warn(`WARNING: a '${HUB_TASK}' task from an earlier --install-hub run is still registered and keeps`
       + ` serving at logon; remove it with: Unregister-ScheduledTask '${HUB_TASK}' -Confirm:$false`);
   }
 
   installStagedExecutable();
+
+  // The swap stopped every resident, the locally installed hub included; a
+  // workstation-only install must put that hub back, not leave it down until
+  // the next logon.
+  if (strayHubTask) await restartInstalledHub();
 
   if (cli.installHub) {
     // Profiles and quick commands persist here (the compose deployment's
@@ -557,6 +593,17 @@ async function install(cli: InstallCli): Promise<void> {
   }
 }
 
+// Start the installed hub task back up and prove it holds, its port read
+// from its own command line — used by update and by a workstation-only
+// install, both of which stop it as part of the executable swap.
+async function restartInstalledHub(): Promise<void> {
+  const args = taskArguments(HUB_TASK);
+  const port = Number(/--port\s+(\d+)/.exec(args)?.[1] ?? 8080);
+  startTask(HUB_TASK);
+  await waitHubHolds(port, args.replace(/^\s*--headless\s+/, ''));
+  console.log(`The hub is up on http://127.0.0.1:${port}.`);
+}
+
 // Adds a "PromptPortal" profile that opens a new hub-connected session (it
 // just runs `prompt-portal`). The whole fragment directory is rewritten, so a
 // stale profile from an older layout never lingers beside the new one. The
@@ -595,14 +642,8 @@ async function update(): Promise<void> {
   installStagedExecutable();
 
   // Restart and verify in the same order a full install uses: the hub first,
-  // then the launcher. The hub's port rides its task's command line.
-  if (hubInstalled) {
-    const args = taskArguments(HUB_TASK);
-    const port = Number(/--port\s+(\d+)/.exec(args)?.[1] ?? 8080);
-    startTask(HUB_TASK);
-    await waitHubHolds(port, args.replace(/^\s*--headless\s+/, ''));
-    console.log(`The hub is up on http://127.0.0.1:${port}.`);
-  }
+  // then the launcher.
+  if (hubInstalled) await restartInstalledHub();
   if (launcherInstalled) {
     startTask(LAUNCHER_TASK);
     waitProcessHolds('launcher', `"${exePath()}" launcher`);
@@ -612,25 +653,24 @@ async function update(): Promise<void> {
 
 // ---------------------------------------------------------- uninstall
 
-// Reverse the install: stop the scheduled tasks and running processes, then
-// remove the credentials, user environment variables, PATH entry, and Windows
-// Terminal profile it created. Idempotent — anything already gone is skipped.
-// The built executable and the hub-data directory (saved profiles and quick
-// commands) are deliberately left in place.
+// Reverse the install: unregister the scheduled tasks, remove the
+// credentials, user environment variables, PATH entry, and Windows Terminal
+// profile, and only then stop the running processes — the uninstall may be
+// typed into a PromptPortal session, and killing its host mid-way would cut
+// the bookkeeping (and this output) off. Idempotent — anything already gone
+// is skipped. The built executable and the hub-data directory (saved
+// profiles and quick commands) are deliberately left in place.
 function uninstall(): void {
   console.log('Uninstalling PromptPortal...');
-  // Tasks before processes, so neither the launcher nor the hub is restarted
-  // at logon or by a task's restart-on-failure while we are tearing it down.
+  // Tasks first, so neither the launcher nor the hub is restarted at logon
+  // or by a task's restart-on-failure while we are tearing it down.
   for (const task of [HUB_TASK, LAUNCHER_TASK]) {
     if (unregisterTask(task)) console.log(`Removed scheduled task '${task}'.`);
   }
-  console.log('Stopping running prompt-portal processes (open sessions end with them)...');
-  stopAll();
   for (const target of [CREDENTIAL_TARGET, ...HUB_CREDENTIAL_TARGETS]) {
-    if (readCredential(target) !== null) {
-      deleteCredential(target);
-      console.log(`Removed credential '${target}'.`);
-    }
+    if (readCredential(target) === null) continue;
+    if (deleteCredential(target)) console.log(`Removed credential '${target}'.`);
+    else console.warn(`WARNING: could not remove credential '${target}' — it is still stored.`);
   }
   for (const name of USER_ENV_VARS) {
     if (getEnvVar(name, 'User')) {
@@ -643,7 +683,9 @@ function uninstall(): void {
     fs.rmSync(fragmentDir(), { recursive: true, force: true });
     console.log("Removed the Windows Terminal 'PromptPortal' profile.");
   }
-  console.log(`\nDone. Left in place: the executable in ${binDir()} and any hub data in ${hubDataDir()}.`);
+  console.log(`Done. Left in place: the executable in ${binDir()} and any hub data in ${hubDataDir()}.`);
+  console.log('Stopping running prompt-portal processes (open sessions end with them)...');
+  stopAll();
 }
 
 // -------------------------------------------------------------- entry
@@ -652,6 +694,14 @@ export async function runInstaller(command: 'install' | 'update' | 'uninstall', 
   if (!isWindows) {
     throw new CliError(`${command} manages a Windows workstation install; on this platform run the pieces`
       + ' directly (see the README: docker compose, or `prompt-portal hub` / `prompt-portal launcher`)');
+  }
+  // install and update compile the executable from this package's source,
+  // which the compiled executable does not carry — refuse up front, before
+  // any prompt or output. (uninstall needs no source and works from the
+  // executable.) The hint deliberately names only the subcommand: argv can
+  // hold --password values that must not be echoed.
+  if (isCompiled && command !== 'uninstall') {
+    throw new CliError(`${command} rebuilds the executable from source — run \`bunx prompt-portal@latest ${command}\` instead`);
   }
   if (command === 'install') return install(parseInstallCli(argv));
   if (argv.length > 0) throw new CliError(`${command} takes no arguments — usage: ${USAGE}`);
