@@ -32,6 +32,6 @@ describe('resolveExistingDir', () => {
   });
 
   test('rejects a directory that does not exist', () => {
-    expect(() => resolveExistingDir(path.join(os.tmpdir(), 'promptportal-definitely-missing-xyz'))).toThrow(CliError);
+    expect(() => resolveExistingDir(path.join(os.tmpdir(), 'prompt-portal-definitely-missing-xyz'))).toThrow(CliError);
   });
 });

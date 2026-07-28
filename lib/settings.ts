@@ -59,8 +59,8 @@ export function parseHubCli(argv: string[]): HubCli {
 // The hub credentials' Credential Manager targets, named for the installer
 // (which stores each secret under the right one) and listed for the
 // uninstaller (which removes them all).
-export const HUB_WEBACCESS_TARGET = 'PromptPortalHub/webaccess';
-export const HUB_WORKSTATION_TARGET = 'PromptPortalHub/workstation';
+export const HUB_WEBACCESS_TARGET = 'prompt-portal-hub/webaccess';
+export const HUB_WORKSTATION_TARGET = 'prompt-portal-hub/workstation';
 export const HUB_CREDENTIAL_TARGETS = [HUB_WEBACCESS_TARGET, HUB_WORKSTATION_TARGET];
 
 const HUB_PASSWORDS = [

@@ -58,7 +58,7 @@ export function writeCredential(target: string, secret: string): void {
   // These buffers must stay referenced until the call returns; the struct
   // holds raw pointers into them.
   const targetName = utf16z(target);
-  const user = utf16z('promptportal');
+  const user = utf16z('prompt-portal');
   const blob = Buffer.from(secret, 'utf16le');
   const cred = Buffer.alloc(CREDENTIAL_SIZE);
   cred.writeUInt32LE(CRED_TYPE_GENERIC, 4);

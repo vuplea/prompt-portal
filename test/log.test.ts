@@ -8,7 +8,7 @@ import { RotatingLog } from '../cli/log';
 const dirs: string[] = [];
 
 function scratchDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptportal-log-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prompt-portal-log-'));
   dirs.push(dir);
   return dir;
 }
@@ -19,7 +19,7 @@ afterEach(() => {
 
 function lines(dir: string, file: 0 | 1): string[] {
   try {
-    return fs.readFileSync(path.join(dir, `promptportal.${file}.log`), 'utf8').split('\n').filter((l) => l.length > 0);
+    return fs.readFileSync(path.join(dir, `prompt-portal.${file}.log`), 'utf8').split('\n').filter((l) => l.length > 0);
   } catch {
     return [];
   }
@@ -54,7 +54,7 @@ describe('RotatingLog', () => {
     const dir = scratchDir();
     const log = new RotatingLog(dir, 5);
     for (let i = 1; i <= 3; i++) log.append(`line ${i}`);
-    fs.writeFileSync(path.join(dir, 'promptportal.0.log'), '');
+    fs.writeFileSync(path.join(dir, 'prompt-portal.0.log'), '');
     log.append('after');
     expect(lines(dir, 0)).toEqual(['after']);
     // The recount means these 4 writes did not reach the limit: no rotation.

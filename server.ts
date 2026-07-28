@@ -17,7 +17,7 @@ import indexHtmlBundle from './public/index.html' with { type: 'file' };
 const indexHtml = indexHtmlBundle as unknown as string;
 import appJs from './public/app.js' with { type: 'file' };
 import styleCss from './public/style.css' with { type: 'file' };
-// PWA assets: the manifest makes the phone install PromptPortal to the home
+// PWA assets: the manifest makes the phone install prompt-portal to the home
 // screen, and its icon + background_color (#16161e) drive the launch splash.
 import manifestFile from './public/manifest.webmanifest' with { type: 'file' };
 import icon192 from './public/icon-192.png' with { type: 'file' };
@@ -139,7 +139,7 @@ function authFailure(result: { status: 401 | 429; retryAfter?: number }): Respon
     });
   }
   return respond(401, 'Authentication required. Sign in as "promptportal" with the web-access password.', {
-    'WWW-Authenticate': 'Basic realm="PromptPortal (username: promptportal)", charset="UTF-8"',
+    'WWW-Authenticate': 'Basic realm="prompt-portal (username: promptportal)", charset="UTF-8"',
     'Content-Type': 'text/plain',
   });
 }
@@ -491,7 +491,7 @@ export async function runHub(cliArgs: string[]): Promise<'done' | 'serving'> {
     });
   }
 
-  console.log(`PromptPortal hub listening on http://${HOST}:${PORT} (data: ${path.resolve(DATA_DIR)})`);
+  console.log(`prompt-portal hub listening on http://${HOST}:${PORT} (data: ${path.resolve(DATA_DIR)})`);
 
   // The hub itself speaks plain HTTP, and Basic auth resends the password with
   // every request — so a non-loopback listener is only safe with TLS

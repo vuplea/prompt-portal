@@ -38,7 +38,7 @@ export function selfArgv(args: string[]): string[] {
 // The workstation password's home on Windows: a generic credential in the
 // user's Credential Manager (lib/credential.ts), written by `prompt-portal set-password`
 // and read back by every session host and the launcher.
-export const CREDENTIAL_TARGET = 'PromptPortal';
+export const CREDENTIAL_TARGET = 'prompt-portal';
 
 export const env = {
   get hubUrl(): string { return process.env.PROMPTPORTAL_HUB_URL ?? ''; },

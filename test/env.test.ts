@@ -12,7 +12,7 @@ import { autoloadedEnvKeys, dropAutoloadedDotenv } from '../cli/config';
 const dirs: string[] = [];
 
 function fixture(files: Record<string, string> = {}): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptportal-env-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prompt-portal-env-'));
   dirs.push(dir);
   for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), body);
   return dir;

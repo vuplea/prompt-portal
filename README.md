@@ -102,7 +102,7 @@ unmanaged):
 | `PROMPTPORTAL_SHELL` | platform default | Shell each session hosts |
 
 The launcher and every session host append to a rotating log under
-`~/.promptportal/logs`.
+`~/.prompt-portal/logs`.
 
 ## Hosting the hub
 

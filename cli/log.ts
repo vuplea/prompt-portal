@@ -5,18 +5,18 @@ import util from 'node:util';
 
 // File logging for the long-running prompt-portal processes. Every console.log/error
 // line from the launcher and from each session host is also appended to a
-// shared log file under ~/.promptportal/logs, headed with a timestamp and the
+// shared log file under ~/.prompt-portal/logs, headed with a timestamp and the
 // writer's identity — the record that survives a headless conhost (the
 // launcher's logon task) or a closed session window. Console output keeps
 // flowing, tag-prefixed; a windowed host mutes the console (muteConsole)
 // because the pty owns that screen, and its lines then live only in the file.
 //
-// Rotation: two fixed files, promptportal.0.log and promptportal.1.log. Writers append to the
-// active one; when it reaches LINE_LIMIT lines they move to the other,
-// truncating it first. No renames — the launcher and any number of session
-// hosts write concurrently, and renaming under a concurrent writer strands
-// its output; with fixed names the worst race (two writers rotating in the
-// same instant, double-truncating) costs a few lines once per LINE_LIMIT.
+// Rotation: two fixed files, prompt-portal.0.log and prompt-portal.1.log.
+// Writers append to the active one; when it reaches LINE_LIMIT lines they move
+// to the other, truncating it first. No renames — the launcher and any number
+// of session hosts write concurrently, and renaming under a concurrent writer
+// strands its output; with fixed names the worst race (two writers rotating in
+// the same instant, double-truncating) costs a few lines once per LINE_LIMIT.
 //
 // Concurrency: each line is one O_APPEND write (appendFileSync opens with
 // 'a'), which the kernel serializes, so concurrent writers interleave whole
@@ -35,7 +35,7 @@ export class RotatingLog {
 
   constructor(dir: string, private readonly limit: number = LINE_LIMIT) {
     fs.mkdirSync(dir, { recursive: true });
-    this.files = [path.join(dir, 'promptportal.0.log'), path.join(dir, 'promptportal.1.log')];
+    this.files = [path.join(dir, 'prompt-portal.0.log'), path.join(dir, 'prompt-portal.1.log')];
     // The active file is the most recently written one: rotation leaves the
     // full file behind with an older mtime. A missing file counts as oldest.
     // An mtime tie can pick the full file, which self-corrects on the first
@@ -153,7 +153,7 @@ function patchConsole(): void {
 export function initLog(who: string): void {
   tag = who;
   try {
-    log = new RotatingLog(path.join(os.homedir(), '.promptportal', 'logs'));
+    log = new RotatingLog(path.join(os.homedir(), '.prompt-portal', 'logs'));
   } catch (err) {
     original.error(`prompt-portal: file logging disabled: ${(err as Error).message}`);
   }

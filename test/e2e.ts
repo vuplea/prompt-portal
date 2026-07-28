@@ -16,8 +16,8 @@ import { BROWSER_PROTOCOL } from '../lib/protocol';
 const REPO = path.resolve(import.meta.dir, '..');
 const PORT = 18000 + (process.pid % 1000);
 const BASE = `http://127.0.0.1:${PORT}`;
-const PASS = 'promptportal-e2e-not-a-real-secret'; // web access
-const NODE_PASS = 'promptportal-e2e-workstation-secret'; // workstation registration
+const PASS = 'prompt-portal-e2e-not-a-real-secret'; // web access
+const NODE_PASS = 'prompt-portal-e2e-workstation-secret'; // workstation registration
 const NODE = 'e2e';
 const CWD = os.tmpdir();
 const AUTH = 'Basic ' + Buffer.from(`promptportal:${PASS}`).toString('base64');
@@ -118,7 +118,7 @@ async function attachViewer(id: string) {
 }
 
 // ------------------------------------------------------------------- hub
-dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptportal-e2e-'));
+dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'prompt-portal-e2e-'));
 // Through the `hub` subcommand rather than server.ts directly, so the e2e
 // also proves the path `bunx prompt-portal hub` takes.
 spawn('hub', ['cli/main.ts', 'hub'], {
@@ -176,7 +176,7 @@ await until('launcher registered', 10000, async () => {
 });
 console.log('OK launcher registered');
 
-const badCreate = await api('/api/sessions', { cwd: path.join(CWD, 'promptportal-e2e-definitely-missing') });
+const badCreate = await api('/api/sessions', { cwd: path.join(CWD, 'prompt-portal-e2e-definitely-missing') });
 if (badCreate.status !== 400 || !String(badCreate.body?.error).includes('does not exist')) {
   fail(`bad-cwd create: ${badCreate.status} ${JSON.stringify(badCreate.body)}`);
 }

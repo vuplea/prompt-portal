@@ -16,7 +16,7 @@
     "server.ts",
     "public",
     "bun.lock",
-    "windows/promptportal.ico",
+    "windows/prompt-portal.ico",
     "windows/windows-terminal-fragment.template.json"
   ],
   "scripts": {

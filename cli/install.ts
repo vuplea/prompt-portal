@@ -36,8 +36,8 @@ import { verifyWorkstationPassword } from './password';
 // environment) shell out to Windows PowerShell — always present, and the
 // proven unelevated path for user-scoped logon tasks.
 
-const LAUNCHER_TASK = 'PromptPortalLauncher';
-const HUB_TASK = 'PromptPortalHub';
+const LAUNCHER_TASK = 'prompt-portal-launcher';
+const HUB_TASK = 'prompt-portal-hub';
 const EXE_BASE = 'prompt-portal';
 // User environment variables an install persists (and uninstall removes).
 const USER_ENV_VARS = ['PROMPTPORTAL_HUB_URL', 'PROMPTPORTAL_NODE_NAME'];
@@ -70,7 +70,7 @@ const binDir = () => path.join(appDir(), 'bin');
 const hubDataDir = () => path.join(appDir(), 'hub-data');
 const exePath = () => path.join(binDir(), `${EXE_BASE}.exe`);
 const stagedExePath = () => path.join(binDir(), `${EXE_BASE}-new.exe`);
-const fragmentDir = () => path.join(localAppData(), 'Microsoft', 'Windows Terminal', 'Fragments', 'PromptPortal');
+const fragmentDir = () => path.join(localAppData(), 'Microsoft', 'Windows Terminal', 'Fragments', EXE_BASE);
 
 // The package this running script belongs to — what gets compiled and where
 // the icon and the Windows Terminal fragment template ship.
@@ -165,7 +165,7 @@ function taskArguments(name: string): string {
 // binary. Session hosts are deliberately spared: the swap renames the old
 // image aside and a running process follows its file through a rename, so
 // open sessions live on untouched. Sparing them also means running an update
-// from inside a PromptPortal session is safe — stopping every host would kill
+// from inside a prompt-portal session is safe — stopping every host would kill
 // the session this very command runs in, mid-swap. Matched by Bun's PE
 // company field ("Oven"), not the install path, so a resident left running
 // from an old build is caught too.
@@ -285,8 +285,8 @@ function buildStagedExecutable(): void {
       buildBun(), 'build', '--compile', path.join(root, 'cli', 'main.ts'),
       '--outfile', stagedExePath(),
       '--no-compile-autoload-bunfig', '--no-compile-autoload-dotenv',
-      '--windows-icon', path.join(root, 'windows', 'promptportal.ico'),
-      '--windows-title', 'PromptPortal',
+      '--windows-icon', path.join(root, 'windows', 'prompt-portal.ico'),
+      '--windows-title', 'prompt-portal',
     ],
     cwd: root,
     stdout: 'inherit',
@@ -539,7 +539,7 @@ async function install(cli: InstallCli): Promise<void> {
     // this headless plain-HTTP hub onto the network.
     fs.mkdirSync(hubDataDir(), { recursive: true });
     const hubCommand = `"${exePath()}" hub --host 127.0.0.1 --port ${cli.hubPort} --data "${hubDataDir()}"`;
-    registerHeadlessLogonTask(HUB_TASK, hubCommand, 'PromptPortal hub');
+    registerHeadlessLogonTask(HUB_TASK, hubCommand, 'prompt-portal hub');
     startTask(HUB_TASK);
     // The task runs the hub headless, so a startup error would die invisibly;
     // prove it answers HTTP and holds before the workstation half depends on it.
@@ -573,7 +573,7 @@ async function install(cli: InstallCli): Promise<void> {
   // The launcher is the workstation's one resident process: it exists so
   // sessions can be started from the hub (each opens as a terminal window
   // here).
-  registerHeadlessLogonTask(LAUNCHER_TASK, `"${exePath()}" launcher`, 'PromptPortal workstation launcher');
+  registerHeadlessLogonTask(LAUNCHER_TASK, `"${exePath()}" launcher`, 'prompt-portal workstation launcher');
 
   installWindowsTerminalFragment();
 
@@ -613,11 +613,11 @@ async function restartInstalledHub(): Promise<void> {
 // icon ships beside the exe so the profile points at a stable path.
 function installWindowsTerminalFragment(): void {
   const iconPath = path.join(binDir(), `${EXE_BASE}.ico`);
-  fs.copyFileSync(path.join(packageRoot(), 'windows', 'promptportal.ico'), iconPath);
+  fs.copyFileSync(path.join(packageRoot(), 'windows', 'prompt-portal.ico'), iconPath);
   const template = fs.readFileSync(
     path.join(packageRoot(), 'windows', 'windows-terminal-fragment.template.json'), 'utf8');
   const fragment = template
-    .replaceAll('__PROMPTPORTAL__', exePath().replaceAll('\\', '\\\\'))
+    .replaceAll('__PROMPT_PORTAL__', exePath().replaceAll('\\', '\\\\'))
     .replaceAll('__ICON__', iconPath.replaceAll('\\', '\\\\'));
   fs.rmSync(fragmentDir(), { recursive: true, force: true });
   fs.mkdirSync(fragmentDir(), { recursive: true });
@@ -637,10 +637,10 @@ async function update(): Promise<void> {
   const launcherInstalled = taskExists(LAUNCHER_TASK);
   const hubInstalled = taskExists(HUB_TASK);
   if (!launcherInstalled && !hubInstalled) {
-    throw new CliError('Nothing to update: no PromptPortal launcher or hub is installed on this machine.'
+    throw new CliError('Nothing to update: no prompt-portal launcher or hub is installed on this machine.'
       + ' Run `prompt-portal install` first.');
   }
-  console.log('Updating PromptPortal in place (rebuilding the executable)...');
+  console.log('Updating prompt-portal in place (rebuilding the executable)...');
   buildStagedExecutable();
   installStagedExecutable();
 
@@ -659,12 +659,12 @@ async function update(): Promise<void> {
 // Reverse the install: unregister the scheduled tasks, remove the
 // credentials, user environment variables, PATH entry, and Windows Terminal
 // profile, and only then stop the running processes — the uninstall may be
-// typed into a PromptPortal session, and killing its host mid-way would cut
+// typed into a prompt-portal session, and killing its host mid-way would cut
 // the bookkeeping (and this output) off. Idempotent — anything already gone
 // is skipped. The built executable and the hub-data directory (saved
 // profiles and quick commands) are deliberately left in place.
 function uninstall(): void {
-  console.log('Uninstalling PromptPortal...');
+  console.log('Uninstalling prompt-portal...');
   // Tasks first, so neither the launcher nor the hub is restarted at logon
   // or by a task's restart-on-failure while we are tearing it down.
   for (const task of [HUB_TASK, LAUNCHER_TASK]) {
