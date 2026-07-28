@@ -17,9 +17,9 @@ const CREATE_TOMBSTONE_MS = 5 * 60 * 1000;
 // Per-connection context attached at upgrade time; Bun delivers WebSocket
 // events to one central handler (server.ts), which dispatches on `kind`.
 export type WsData =
-  | { kind: 'session'; conn: SessionConn | null; isAlive: boolean }
-  | { kind: 'launcher'; name: string; isAlive: boolean }
-  | { kind: 'browser'; conn: SessionConn; clientId: string | null; isAlive: boolean };
+  | { kind: 'session'; conn: SessionConn | null; missedPongs: number }
+  | { kind: 'launcher'; name: string; missedPongs: number }
+  | { kind: 'browser'; conn: SessionConn; clientId: string | null; missedPongs: number };
 
 export type PtSocket = ServerWebSocket<WsData>;
 

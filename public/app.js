@@ -11,10 +11,11 @@ let sessionFilter = ''; // narrows the Running list to one workstation ('' = all
 
 let currentId = null; // session shown in the terminal view
 let ws = null;
-let lastFrameAt = 0; // last frame on the terminal socket (the hub pings every 30s)
+let lastFrameAt = 0; // last frame on the terminal socket (the hub pings every 10s)
 let reconnectTimer = null;
 let reconnectDelay = 1000;
-let sessionMisses = 0; // consecutive state refreshes missing currentId
+let sessionMissingSince = 0; // when state refreshes started missing currentId (0 = present)
+let dialAttempts = 0; // consecutive connect() attempts without an open; scales the handshake bound
 let sessionExited = false; // the viewed session reported {t:'x'}
 let ctrlArmed = false;
 let altArmed = false;
@@ -31,11 +32,12 @@ function el(tag, props = {}, children = []) {
 
 /* -------------------------------------------------------------- api */
 
-async function api(path, body) {
-  const options = body === undefined ? {} : {
+async function api(path, body, signal) {
+  const options = body === undefined ? { signal } : {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   };
   const res = await fetch('/api/' + path, options);
   if (res.status === 401) {
@@ -60,8 +62,8 @@ function run(promise) {
   promise.catch((err) => { if (!err.silent) alert(err.message); });
 }
 
-async function refreshState() {
-  ({ profiles, commands, sessions, nodes } = await api('state'));
+async function refreshState(signal) {
+  ({ profiles, commands, sessions, nodes } = await api('state', undefined, signal));
   renderHome();
   renderSessionSelect();
 }
@@ -352,7 +354,8 @@ function setStatus(status) {
 
 function openSession(id) {
   currentId = id;
-  sessionMisses = 0;
+  sessionMissingSince = 0;
+  dialAttempts = 0;
   sessionExited = false;
   reconnectDelay = 1000; // a fresh view must not inherit another session's backoff
   showViewTerm();
@@ -494,21 +497,32 @@ function discardSocket() {
 function retryLater() {
   setStatus('reconnecting');
   reconnectTimer = setTimeout(connect, reconnectDelay);
-  reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+  reconnectDelay = Math.min(reconnectDelay * 2, 3000);
 }
+
+// How long the session must be continuously missing from /api/state before
+// this view gives up and goes home — comfortably past the host's worst-case
+// redial (~45s: 30s of silence + 10s watchdog granularity + grace and backoff,
+// see cli/link.ts). Wall time, not a retry count: a count is a proxy that
+// silently breaks whenever the retry cadence is retuned.
+const SESSION_GONE_MS = 60 * 1000;
 
 function scheduleReconnect() {
   if (document.body.dataset.view !== 'term' || !currentId) return;
   retryLater();
   // The session may have been closed from another client; the local list
-  // wouldn't know. Refresh — but one refresh missing the session does not
-  // mean it was closed: a blip on the session's own hub link unregisters it,
-  // and it comes back when its host redials seconds later. Ride through a
-  // few misses (retrying meanwhile) before going home.
-  refreshState().then(() => {
+  // wouldn't know. Refresh — but a refresh missing the session does not mean
+  // it was closed: a blip on the session's own hub link unregisters it, and
+  // it comes back when its host notices and redials; only a session missing
+  // for SESSION_GONE_MS is treated as gone. Bounded like the token fetch in
+  // connect(): left hanging on a black-holed path, these refreshes would
+  // pile up and exhaust the browser's per-host connection pool, starving the
+  // very requests that could reconnect.
+  refreshState(AbortSignal.timeout(3000)).then(() => {
     if (!currentId) return;
-    if (sessions.some((s) => s.id === currentId)) { sessionMisses = 0; return; }
-    if (++sessionMisses >= 5) detach();
+    if (sessions.some((s) => s.id === currentId)) { sessionMissingSince = 0; return; }
+    if (sessionMissingSince === 0) sessionMissingSince = Date.now();
+    else if (Date.now() - sessionMissingSince > SESSION_GONE_MS) detach();
   }).catch(() => {}); // hub unreachable; the retry above probes again
 }
 
@@ -521,9 +535,20 @@ async function connect() {
   // Each connection uses a fresh single-use token, carried in a subprotocol
   // slot rather than the URL so it stays out of access logs.
   const id = currentId;
+  // Per-attempt bound on the token fetch and the dial. The first attempt is
+  // kept short — the common case is a black-holed dial on a freshly woken
+  // phone, where waiting is pure loss — but retries get room for a genuinely
+  // slow handshake (DNS + TCP + TLS + upgrade is several round trips): held
+  // at the fast value, a high-RTT link would be cut off at the same point on
+  // every attempt and never connect at all.
+  const budgetMs = dialAttempts === 0 ? 3000 : 8000;
+  dialAttempts++;
   let token;
   try {
-    ({ token } = await api('token'));
+    // Bounded: on a phone whose network is still waking up this fetch can
+    // hang for tens of seconds, and no other watchdog covers this step (the
+    // dial timer below starts only once the token is in hand).
+    ({ token } = await api('token', undefined, AbortSignal.timeout(budgetMs)));
   } catch {
     if (seq === connectSeq) scheduleReconnect();
     return;
@@ -542,13 +567,14 @@ async function connect() {
     if (seq !== connectSeq) return;
     discardSocket();
     scheduleReconnect();
-  }, 10000);
+  }, budgetMs);
 
   ws.onopen = () => {
     clearTimeout(dialTimer);
     lastFrameAt = Date.now();
     reconnectDelay = 1000;
-    sessionMisses = 0;
+    sessionMissingSince = 0;
+    dialAttempts = 0;
     // Re-assert this viewer's size on every connection: another viewer may
     // have resized the shared pty since the last one.
     sentCols = sentRows = 0;
@@ -826,19 +852,19 @@ if (matchMedia('(pointer: coarse)').matches) {
   });
 }
 
-// The hub pings every 30s, so an OPEN socket with no frame for 90s is dead:
+// The hub pings every 10s, so an OPEN socket with no frame for 30s is dead:
 // the hub reaped it while the phone slept and the close never arrived, or the
 // network path changed under it. readyState cannot tell — WS-level pings are
 // answered below the JS layer — so this is the same application-frame
 // watchdog the workstation link runs (cli/link.ts).
-const SILENCE_TIMEOUT_MS = 90 * 1000;
+const SILENCE_TIMEOUT_MS = 30 * 1000;
 
 function reconnectIfDead() {
   if (document.body.dataset.view !== 'term' || !currentId) return;
   if (!ws || ws.readyState !== WebSocket.OPEN) return; // dialing; its own timers cover it
   if (Date.now() - lastFrameAt > SILENCE_TIMEOUT_MS) connect();
 }
-setInterval(reconnectIfDead, 30 * 1000);
+setInterval(reconnectIfDead, 10 * 1000);
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;

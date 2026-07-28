@@ -64,7 +64,7 @@ export class Auth {
   // Browser and workstation lockouts are throttled alike but tracked separately
   // (the channel prefix): the lockout gate runs before the credential check,
   // so a shared bucket would let one workstation left on a stale password —
-  // redialing every 30s forever — serve correct-password browsers on the
+  // redialing every 10s forever — serve correct-password browsers on the
   // same address nothing but 429s. The price is one extra set of free
   // attempts on the second channel, noise against a long random password.
   check(authorization: string | undefined, ip: string): AuthResult {

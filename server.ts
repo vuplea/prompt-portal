@@ -308,8 +308,8 @@ export async function runHub(cliArgs: string[]): Promise<'done' | 'serving'> {
       const ok = server.upgrade(req, {
         headers: { 'Sec-WebSocket-Protocol': marker },
         data: url.pathname === '/session'
-          ? { kind: 'session', conn: null, isAlive: true }
-          : { kind: 'launcher', name, isAlive: true },
+          ? { kind: 'session', conn: null, missedPongs: 0 }
+          : { kind: 'launcher', name, missedPongs: 0 },
       });
       return ok ? undefined : respond(400, 'Bad Request');
     }
@@ -325,7 +325,7 @@ export async function runHub(cliArgs: string[]): Promise<'done' | 'serving'> {
       }
       const ok = server.upgrade(req, {
         headers: { 'Sec-WebSocket-Protocol': BROWSER_PROTOCOL },
-        data: { kind: 'browser', conn, clientId: null, isAlive: true },
+        data: { kind: 'browser', conn, clientId: null, missedPongs: 0 },
       });
       return ok ? undefined : respond(400, 'Bad Request');
     }
@@ -398,7 +398,7 @@ export async function runHub(cliArgs: string[]): Promise<'done' | 'serving'> {
     websocket: {
       maxPayloadLength: 16 * 1024 * 1024, // a build-log firehose from a session, not a browser frame
       // The reaper below is what detects dead peers; this is only a backstop,
-      // and it must not outpace the 30s ping interval.
+      // and it must not outpace the 10s ping interval.
       idleTimeout: 480,
 
       open(ws: PtSocket) {
@@ -459,24 +459,27 @@ export async function runHub(cliArgs: string[]): Promise<'done' | 'serving'> {
       },
 
       pong(ws: PtSocket) {
-        ws.data.isAlive = true;
+        ws.data.missedPongs = 0;
       },
     },
   });
 
   // Drop peers that vanished without a close frame (phone lost signal, the
-  // workstation slept) so nothing accumulates dead sockets. Every peer also
-  // gets a {t:'ping'} frame: WS-level pings are answered below the JS layer on
-  // both ends, so only an application frame lets a workstation (cli/link.ts) or
-  // a page (public/app.js) tell a silent hub from a dead link.
+  // workstation slept) so nothing accumulates dead sockets. Dead means three
+  // missed pong cycles — the same 30s the application-frame watchdogs allow;
+  // a single cycle would reap a live peer over one bad RTT spike, and a
+  // falsely reaped session socket drops its watchers and costs a full replay
+  // on redial. Every peer also gets a {t:'ping'} frame: WS-level pings are
+  // answered below the JS layer on both ends, so only an application frame
+  // lets a workstation (cli/link.ts) or a page (public/app.js) tell a silent
+  // hub from a dead link.
   setInterval(() => {
     for (const ws of liveSockets) {
-      if (!ws.data.isAlive) { ws.terminate(); continue; }
-      ws.data.isAlive = false;
+      if (++ws.data.missedPongs >= 3) { ws.terminate(); continue; }
       ws.ping();
       send(ws, { t: 'ping' });
     }
-  }, 30 * 1000).unref();
+  }, 10 * 1000).unref();
 
   // ------------------------------------------------------------- lifecycle
 

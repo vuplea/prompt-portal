@@ -7,23 +7,23 @@ import { CliError } from './config';
 // hub that went silent.
 
 const RECONNECT_MIN_MS = 1000;
-const RECONNECT_MAX_MS = 30 * 1000;
+const RECONNECT_MAX_MS = 10 * 1000;
 // A link must survive this long before its close resets the reconnect
 // backoff. Resetting on open alone would let two peers that share an
 // identity replace each other's registration in a tight 1s loop forever (the
 // hub terminates the old link on each new registration); requiring a stable
 // link turns that misconfiguration into ordinary exponential backoff.
 const STABLE_LINK_MS = 30 * 1000;
-// The hub sends a {t:'ping'} frame every 30s; a link this quiet is dead
-// (WS-level pings are answered below the JS layer, so they prove nothing to
-// this end). Redial rather than trust it.
-const SILENCE_TIMEOUT_MS = 90 * 1000;
+// The hub sends a {t:'ping'} frame every 10s; a link this quiet has missed
+// three of them and is dead (WS-level pings are answered below the JS layer,
+// so they prove nothing to this end). Redial rather than trust it.
+const SILENCE_TIMEOUT_MS = 30 * 1000;
 // How long a dropped link gets to deliver its close event. terminate() on a
 // live socket closes it immediately — but on a transport that died during a
 // system sleep, Bun's close event can fail to arrive at all, and a redial
 // loop waiting for it would park forever (a launcher that never comes back
 // after the machine wakes). The grace timer settles the link regardless.
-const TERMINATE_GRACE_MS = 5 * 1000;
+const TERMINATE_GRACE_MS = 2 * 1000;
 
 // Accepts http(s)/ws(s); the link is a WebSocket, so normalize to ws(s). A
 // bare host ("hub.example.com") means TLS — cleartext is never a default, so
@@ -165,7 +165,7 @@ function runLink(url: string, subprotocol: string, password: string,
         console.log('hub link silent too long; dropping it to redial');
         drop();
       }
-    }, 30 * 1000);
+    }, 10 * 1000);
     watchdog.unref?.();
 
     ws.onopen = () => {
