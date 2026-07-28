@@ -2,12 +2,12 @@ import path from 'node:path';
 
 import { SESSION_PROTOCOL } from '../lib/protocol';
 import { isWindows, resolveExistingDir } from './config';
-import { disableNewlineAutoReturn } from './console';
+import { configureHostConsole } from './console';
 import { maintainLink, type Post } from './link';
 import { muteConsole, setLogTag } from './log';
 import { KILL_GRACE_MS, Session } from './session';
 
-// `promptportal` — one session, one process. Owns the pty, renders it natively in the
+// `prompt-portal` — one session, one process. Owns the pty, renders it natively in the
 // terminal it was started in (the window *is* the session: closing it kills
 // the shell, always), and dials the hub on its own outbound WebSocket so the
 // same screen is watchable and drivable from the browser. Spawned headless
@@ -23,7 +23,7 @@ export interface HostSpec {
   cwd?: string;
   command?: string;
   // Launcher specs pin the session's hub context (see launcher.ts); a
-  // locally started `promptportal` takes both from the environment instead.
+  // locally started `prompt-portal` takes both from the environment instead.
   hubUrl?: string;
   node?: string;
 }
@@ -90,7 +90,7 @@ export async function runHost(spec: HostSpec, ctx: HostContext): Promise<never> 
     // output goes only to the log file. What must reach the user is written
     // straight to stdout as terminal output.
     muteConsole();
-    disableNewlineAutoReturn();
+    configureHostConsole();
   }
 
   const id = spec.id || crypto.randomUUID();

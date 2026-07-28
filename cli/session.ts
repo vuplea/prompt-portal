@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 import type { Msg, SessionInfo } from '../lib/protocol';
 import { env, isWindows } from './config';
+import { spawnConsoleGuard } from './console';
 
 // One running pty (Bun.spawn with a terminal — ConPTY on Windows, a POSIX pty
 // elsewhere) with a replay buffer and subscribers, owned by the host process
@@ -124,6 +125,7 @@ export class Session {
 
   private proc: Bun.Subprocess;
   private terminal!: Bun.Terminal;
+  private stopConsoleGuard: () => void = () => {};
   private torndown = false;
 
   private inputQueue: PtyInput[] = [];
@@ -161,6 +163,10 @@ export class Session {
       },
     });
     this.terminal = this.proc.terminal!;
+
+    // The pty console's codepages are held at UTF-8 for the session's life —
+    // see runConsoleGuard in cli/console.ts.
+    this.stopConsoleGuard = spawnConsoleGuard(this.proc.pid);
 
     // Typed into the interactive shell rather than run via `shell -c`, so
     // the command stays visible in the terminal and a shell survives if it
@@ -307,6 +313,7 @@ export class Session {
   private teardown(): void {
     if (this.torndown) return;
     this.torndown = true;
+    this.stopConsoleGuard();
     this.inputQueue = [];
     this.queuedInputBytes = 0;
     try {

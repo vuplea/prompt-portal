@@ -1,8 +1,24 @@
 {
-  "name": "promptportal",
+  "name": "prompt-portal",
   "version": "1.0.0",
   "description": "Phone-friendly terminal hub for coding agents — run Claude Code or Codex sessions on your workstations and drive them from anywhere",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vuplea/prompt-portal.git"
+  },
+  "bin": {
+    "prompt-portal": "cli/main.ts"
+  },
+  "files": [
+    "cli",
+    "lib",
+    "server.ts",
+    "public",
+    "bun.lock",
+    "windows/promptportal.ico",
+    "windows/windows-terminal-fragment.template.json"
+  ],
   "scripts": {
     "start": "bun server.ts",
     "test": "bun test",

@@ -64,7 +64,7 @@ function spawn(label: string, args: string[], env: Record<string, string> = {}):
 
 function spawnHost(label: string): Bun.Subprocess {
   const spec = Buffer.from(JSON.stringify({ label, cwd: CWD })).toString('base64url');
-  return spawn(label, ['promptportal/main.ts', 'run', '--spec', spec], {
+  return spawn(label, ['cli/main.ts', 'run', '--spec', spec], {
     PROMPTPORTAL_HUB_URL: BASE, PROMPTPORTAL_WORKSTATION_PASSWORD: NODE_PASS, PROMPTPORTAL_NODE_NAME: NODE,
   });
 }
@@ -119,7 +119,9 @@ async function attachViewer(id: string) {
 
 // ------------------------------------------------------------------- hub
 dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptportal-e2e-'));
-spawn('hub', ['server.ts'], {
+// Through the `hub` subcommand rather than server.ts directly, so the e2e
+// also proves the path `bunx prompt-portal hub` takes.
+spawn('hub', ['cli/main.ts', 'hub'], {
   PROMPTPORTAL_PORT: String(PORT), PROMPTPORTAL_HOST: '127.0.0.1', PROMPTPORTAL_WEBACCESS_PASSWORD: PASS,
   PROMPTPORTAL_WORKSTATION_PASSWORD: NODE_PASS, PROMPTPORTAL_DATA: dataDir,
 });
@@ -165,7 +167,7 @@ await until('shell-exited session gone from the list', 5000, goneFromList(exitSe
 console.log('OK shell exit ends the session everywhere');
 
 // --------------------------------------------------------------- launcher
-spawn('launcher', ['promptportal/main.ts', 'launcher'], {
+spawn('launcher', ['cli/main.ts', 'launcher'], {
   PROMPTPORTAL_HUB_URL: BASE, PROMPTPORTAL_WORKSTATION_PASSWORD: NODE_PASS, PROMPTPORTAL_NODE_NAME: NODE,
 });
 await until('launcher registered', 10000, async () => {

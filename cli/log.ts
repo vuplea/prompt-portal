@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import util from 'node:util';
 
-// File logging for the long-running promptportal processes. Every console.log/error
+// File logging for the long-running prompt-portal processes. Every console.log/error
 // line from the launcher and from each session host is also appended to a
 // shared log file under ~/.promptportal/logs, headed with a timestamp and the
 // writer's identity — the record that survives a headless conhost (the
@@ -118,7 +118,7 @@ function countNewlines(buf: Buffer): number {
 const original = { log: console.log, error: console.error };
 
 let log: RotatingLog | null = null;
-let tag = 'promptportal';
+let tag = 'prompt-portal';
 let forward = true;
 let patched = false;
 
@@ -155,7 +155,7 @@ export function initLog(who: string): void {
   try {
     log = new RotatingLog(path.join(os.homedir(), '.promptportal', 'logs'));
   } catch (err) {
-    original.error(`promptportal: file logging disabled: ${(err as Error).message}`);
+    original.error(`prompt-portal: file logging disabled: ${(err as Error).message}`);
   }
   patchConsole();
   // Process lifecycle, both ends: 'exit' fires on every orderly path

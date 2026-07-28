@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.hub
-    container_name: promptportal-hub
+    container_name: prompt-portal-hub
     restart: unless-stopped
     # Bound to loopback: the app speaks plaintext HTTP, so it must not be
     # reachable directly from outside the host. Put a TLS-terminating reverse
@@ -46,7 +46,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.workstation
-    container_name: promptportal-server
+    container_name: prompt-portal-server
     restart: unless-stopped
     # No `init: true` here on purpose: compose's docker-init would sit at PID 1
     # holding PROMPTPORTAL_WORKSTATION_PASSWORD in its environment for the
@@ -71,7 +71,7 @@ services:
     healthcheck:
       # The launcher is the one resident process; sessions are independent of
       # it, so its presence is what health means here.
-      test: ["CMD", "pgrep", "-f", "promptportal launcher"]
+      test: ["CMD", "pgrep", "-f", "prompt-portal launcher"]
       interval: 60s
       timeout: 10s
       retries: 3

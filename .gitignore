@@ -1,6 +1,5 @@
 node_modules/
 data/
 .env
-windows/dist/
 .claude/
 .playwright-mcp/

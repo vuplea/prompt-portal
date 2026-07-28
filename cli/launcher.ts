@@ -1,20 +1,15 @@
 import { LAUNCHER_PROTOCOL, type Msg } from '../lib/protocol';
-import { isCompiled, isWindows, resolveExistingDir } from './config';
+import { isWindows, resolveExistingDir, selfArgv } from './config';
 import { maintainLink } from './link';
 import type { HostContext } from './host';
 import { openHostWindow } from './window';
 
-// `promptportal launcher` — the one resident process per workstation, and the only
+// `prompt-portal launcher` — the one resident process per workstation, and the only
 // reason one exists: starting sessions from the phone. It keeps a single
 // outbound WebSocket to the hub and answers create requests by spawning a
-// `promptportal` host — in a terminal window on a Windows desktop (the window is the
+// `prompt-portal` host — in a terminal window on a Windows desktop (the window is the
 // session), headless in the workstation container. It relays no terminal
 // traffic and owns nothing: stopping it strands no sessions.
-
-function hostArgs(spec: string): string[] {
-  const args = ['run', '--spec', spec];
-  return isCompiled ? args : [process.argv[1]!, ...args];
-}
 
 export async function runLauncher(ctx: HostContext): Promise<never> {
   console.log(`workstation "${ctx.node}" ready`);
@@ -57,11 +52,13 @@ function create(msg: Msg, ctx: HostContext): void {
     node: ctx.node,
   })).toString('base64url');
 
+  const argv = selfArgv(['run', '--spec', spec]);
+
   if (isWindows) {
     // A visible window: the session must be closable (and killable) by
     // closing it. The host reads the workstation password from Credential
     // Manager itself.
-    openHostWindow(hostArgs(spec));
+    openHostWindow(argv);
     console.log(`session ${msg.id} opened in a terminal window`);
     return;
   }
@@ -69,7 +66,7 @@ function create(msg: Msg, ctx: HostContext): void {
   // No windows here (the workstation container): a headless host. The
   // password goes over stdin rather than the environment.
   const child = Bun.spawn({
-    cmd: [process.execPath, ...hostArgs(spec)],
+    cmd: argv,
     env: { ...process.env, PROMPTPORTAL_PASSWORD_STDIN: '1' },
     stdin: 'pipe',
     stdout: 'inherit',

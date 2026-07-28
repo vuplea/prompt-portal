@@ -1,8 +1,8 @@
 {
-  "// note": "install.ps1 resolves the commandline placeholder to the real promptportal.exe path and writes this file to %LOCALAPPDATA%\\Microsoft\\Windows Terminal\\Fragments\\PromptPortal\\promptportal.json (do the same to install by hand).",
+  "// note": "`prompt-portal install` resolves the placeholders to the real prompt-portal.exe and icon paths and writes this file to %LOCALAPPDATA%\\Microsoft\\Windows Terminal\\Fragments\\PromptPortal\\prompt-portal.json (do the same to install by hand).",
   "profiles": [
     {
-      "name": "PromptPortal",
+      "name": "prompt-portal",
       "commandline": "\"__PROMPTPORTAL__\"",
       "icon": "__ICON__",
       "closeOnExit": "graceful",
