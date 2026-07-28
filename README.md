@@ -50,26 +50,30 @@ Everything below runs on [Bun](https://bun.sh) >= 1.3.14; `bunx` comes with it.
 ## Windows workstation
 
 ```powershell
-bunx prompt-portal install --hub-url https://prompt-portal.example.com
+bunx prompt-portal install --install-hub
 ```
 
-It prompts for the workstation password (`--password` skips the prompt,
-at the cost of it landing in shell history), verifies it against the hub,
-builds a native self-contained `prompt-portal.exe` into
-`%LOCALAPPDATA%\prompt-portal\bin`, persists the settings (user environment
-variables + Windows Credential Manager), registers a logon task that runs
-`prompt-portal launcher`, adds the exe to your PATH, and installs a Windows
-Terminal **prompt-portal profile** that opens a connected session in a tab.
+The common case: no separate server to stand up first. It prompts for a
+web-access password (browsers sign in with it) and a workstation password
+(`--password` skips the latter prompt, at the cost of it landing in shell
+history), builds a native self-contained `prompt-portal.exe` into
+`%LOCALAPPDATA%\prompt-portal\bin`, registers the hub itself as a logon task
+on loopback port 8080 (`--hub-port`) and points this workstation at it,
+persists the settings (user environment variables + Windows Credential
+Manager), registers a logon task that runs `prompt-portal launcher`, adds
+the exe to your PATH, and installs a Windows Terminal **prompt-portal
+profile** that opens a connected session in a tab. Publish the hub with
+e.g. `tailscale serve --bg 8080` and use the resulting URL from your phone.
 Re-run any time to change settings; it is idempotent.
 
 - **Update** (rebuild from the latest release, settings untouched, open
   sessions keep running): `bunx prompt-portal@latest update`
 - **Uninstall** (removes tasks, credentials, settings; sessions end):
   `bunx prompt-portal uninstall`
-- **All-local, no server**: `bunx prompt-portal install --install-hub` also
-  registers the hub itself as a logon task on loopback port 8080
-  (`--hub-port`), and points the workstation at it. Publish it with e.g.
-  `tailscale serve --bg 8080` and use the resulting URL from your phone.
+- **Point at a hub you already host**: `bunx prompt-portal install --hub-url
+  https://prompt-portal.example.com` skips the local hub and registers the
+  workstation against that server instead, verifying the password against
+  it.
 
 To make every terminal you open reachable remotely, set the **prompt-portal
 profile** as the Windows Terminal default. For terminals launched from a
