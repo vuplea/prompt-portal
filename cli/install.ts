@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -467,9 +468,7 @@ async function install(cli: InstallCli): Promise<void> {
   }
 
   // Secrets are collected before anything stops or swaps, so a cancelled
-  // prompt leaves the machine exactly as it was. With --install-hub the
-  // workstation password is asked for once and reused for the workstation
-  // registration — never twice.
+  // prompt leaves the machine exactly as it was.
   let webaccess: string | null = null;
   if (cli.installHub) {
     webaccess = await collectSecret(cli.webaccessPassword,
@@ -482,12 +481,25 @@ async function install(cli: InstallCli): Promise<void> {
   }
   const hubHasWorkstation = readCredential(HUB_WORKSTATION_TARGET) !== null;
   const workstationStored = readCredential(CREDENTIAL_TARGET);
-  const entered = await collectSecret(cli.password,
-    'Workstation password (workstations register with it)',
-    workstationStored !== null || (cli.installHub && hubHasWorkstation), 'workstation');
-  if (cli.installHub && entered !== null) {
-    const problem = passwordProblem(entered);
-    if (problem) throw new CliError(`the workstation password ${problem}`);
+  // With --install-hub the workstation password is machine-to-machine — this
+  // workstation registering with its own local hub — so nobody is asked to
+  // invent one: --password pins it, a stored one is kept, and otherwise a
+  // random one is generated. Against a remote hub it is a shared secret the
+  // user already holds, so it is prompted for.
+  let entered: string | null;
+  if (cli.installHub) {
+    entered = cli.password !== undefined && cli.password.length > 0 ? cli.password : null;
+    if (entered !== null) {
+      const problem = passwordProblem(entered);
+      if (problem) throw new CliError(`the workstation password ${problem}`);
+    } else if (workstationStored === null && !hubHasWorkstation) {
+      entered = randomBytes(32).toString('base64url');
+      console.log('Generated a random workstation password.');
+    }
+  } else {
+    entered = await collectSecret(cli.password,
+      'Workstation password (workstations register with it)',
+      workstationStored !== null, 'workstation');
   }
   // What the workstation half stores and verifies below. "Keep the stored
   // one" normally means the workstation credential; with --install-hub the
