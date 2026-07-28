@@ -56,7 +56,7 @@ bunx prompt-portal install --hub-url https://prompt-portal.example.com
 It prompts for the workstation password (`--password` skips the prompt,
 at the cost of it landing in shell history), verifies it against the hub,
 builds a native self-contained `prompt-portal.exe` into
-`%LOCALAPPDATA%\PromptPortal\bin`, persists the settings (user environment
+`%LOCALAPPDATA%\prompt-portal\bin`, persists the settings (user environment
 variables + Windows Credential Manager), registers a logon task that runs
 `prompt-portal launcher`, adds the exe to your PATH, and installs a Windows
 Terminal **prompt-portal profile** that opens a connected session in a tab.

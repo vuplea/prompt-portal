@@ -27,7 +27,7 @@ import { verifyWorkstationPassword } from './password';
 // stored).
 //
 // One self-contained executable serves every role (session host, launcher,
-// hub): %LOCALAPPDATA%\PromptPortal\bin\prompt-portal.exe, compiled from this
+// hub): %LOCALAPPDATA%\prompt-portal\bin\prompt-portal.exe, compiled from this
 // package by the Bun that runs this command — which is why install and update
 // run from source (`bunx prompt-portal install`), never from the installed
 // executable, which carries no source to rebuild from.
@@ -63,8 +63,11 @@ function localAppData(): string {
   return dir;
 }
 
-const binDir = () => path.join(localAppData(), 'PromptPortal', 'bin');
-const hubDataDir = () => path.join(localAppData(), 'PromptPortal', 'hub-data');
+// Everything the install owns sits under one directory named for the command,
+// so the path a user goes looking in matches what they type.
+const appDir = () => path.join(localAppData(), EXE_BASE);
+const binDir = () => path.join(appDir(), 'bin');
+const hubDataDir = () => path.join(appDir(), 'hub-data');
 const exePath = () => path.join(binDir(), `${EXE_BASE}.exe`);
 const stagedExePath = () => path.join(binDir(), `${EXE_BASE}-new.exe`);
 const fragmentDir = () => path.join(localAppData(), 'Microsoft', 'Windows Terminal', 'Fragments', 'PromptPortal');
