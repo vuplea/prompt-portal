@@ -3,12 +3,13 @@ import { describe, expect, test } from 'bun:test';
 import { InputScheduler, MAX_SCHEDULES, MAX_SCHEDULE_DELAY_MS } from '../cli/schedule';
 import { MAX_FIELD_CHARS } from '../lib/protocol';
 
-// Fast clocks: tick every few ms, Enter shortly after the text, so firing is
-// observable without real waits.
-function makeScheduler(tickMs = 5, enterDelayMs = 5) {
+// Fast clocks: tick every few ms, keystrokes shortly apart, so firing is
+// observable without real waits. The defaults keep the production invariant
+// that a fire sequence (up to 2 x keyDelayMs) fits inside one tick.
+function makeScheduler(tickMs = 15, keyDelayMs = 5) {
   const writes: string[] = [];
   let changes = 0;
-  const scheduler = new InputScheduler((d) => writes.push(d), () => { changes += 1; }, tickMs, enterDelayMs);
+  const scheduler = new InputScheduler((d) => writes.push(d), () => { changes += 1; }, tickMs, keyDelayMs);
   return { scheduler, writes, changes: () => changes };
 }
 
