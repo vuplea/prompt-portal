@@ -147,6 +147,27 @@ await until('second viewer replay includes scrollback', 10000, async () =>
   b.frames.some((f) => f.t === 's' && String(f.d).includes('pt_e2e_marker')));
 console.log('OK second viewer replay');
 
+// ------------------------------------------------------- scheduled input
+// The marker appears contiguously only in the command's output — the typed
+// line carries a $() in the middle (empty expansion in PowerShell and bash
+// alike) — so seeing it proves the schedule fired AND the Enter submitted.
+a.ws.send(JSON.stringify({ t: 'sched', d: 'echo pt_e2e_sch$()ed', delay: 1500 }));
+await until('pending schedule fanned out to every viewer', 5000, async () =>
+  b.frames.some((f) => f.t === 'scheds' && f.scheds?.length === 1));
+await until('scheduled command ran', 30000, async () =>
+  a.frames.some((f) => f.t === 'o' && String(f.d).includes('pt_e2e_sched')));
+
+const cancelMarker = 'pt_e2e_never';
+a.ws.send(JSON.stringify({ t: 'sched', d: cancelMarker, delay: 3600 * 1000 }));
+const sched = await until('far-future schedule fanned out', 5000, async () =>
+  b.frames.filter((f) => f.t === 'scheds').at(-1)?.scheds?.find((s: any) => s.d === cancelMarker));
+a.ws.send(JSON.stringify({ t: 'unsched', id: sched.id }));
+await until('canceled schedule gone from the fan-out', 5000, async () => {
+  const last = b.frames.filter((f) => f.t === 'scheds').at(-1);
+  return last && !last.scheds.some((s: any) => s.d === cancelMarker);
+});
+console.log('OK scheduled input: fires text then Enter, fans out, cancels');
+
 const del = await api('/api/sessions/delete', { id: session.id });
 if (del.status !== 200) fail(`delete returned ${del.status}`);
 await raceOk(Promise.all([a.closed, b.closed]), 5000, 'viewers closed after kill');

@@ -12,8 +12,12 @@
 //       server -> client : {t:'s', d}         replay snapshot on (re)attach
 //                          {t:'o', d}         live output
 //                          {t:'x', code}      process exited
+//                          {t:'scheds', scheds} pending scheduled inputs, on
+//                                             attach and after every change
 //       client -> server : {t:'i', d}         input (keystrokes/paste)
 //                          {t:'r', c, r}      resize to c cols x r rows
+//                          {t:'sched', d, delay} type d (then Enter) in delay ms
+//                          {t:'unsched', id}  cancel a pending scheduled input
 //
 //   SESSION_PROTOCOL   session host (`prompt-portal`) -> hub, one outbound socket per
 //     session — the connection *is* the session, so no frame names one. The
@@ -22,9 +26,11 @@
 //                     {t:'o', d}               live output (while watched)
 //                     {t:'s', client, d}       replay snapshot for one client
 //                     {t:'x', code[, client]}  process exited
+//                     {t:'scheds', scheds[, client]} pending scheduled inputs
 //       hub -> host : {t:'watch', client}      a browser attached: replay to it
 //                     {t:'unwatch'}            a browser left
 //                     {t:'i', d} {t:'r', c, r} input and resize
+//                     {t:'sched', d, delay} {t:'unsched', id} scheduled input
 //                     {t:'kill'}               close the session and exit
 //
 //   LAUNCHER_PROTOCOL  workstation launcher (`prompt-portal launcher`) -> hub, one
@@ -81,6 +87,16 @@ export interface SessionInfo {
   node?: string; // the hosting workstation's name
 }
 
+// One pending scheduled input on a session: at `at` the host types `d` into
+// the pty, then Enter. Schedules live in the session host — the one process
+// whose lifetime is exactly the session's — so they survive hub restarts and
+// link drops, and die with the session (see cli/schedule.ts).
+export interface ScheduledInput {
+  id: string;
+  d: string; // the text to type
+  at: number; // fire time, epoch ms on the host's clock
+}
+
 export interface Msg {
   t?: string;
   id?: string;
@@ -94,6 +110,8 @@ export interface Msg {
   command?: string;
   error?: string;
   session?: SessionInfo;
+  delay?: number;
+  scheds?: ScheduledInput[];
 }
 
 export function parse(raw: unknown): Msg | null {

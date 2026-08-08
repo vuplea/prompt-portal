@@ -80,9 +80,24 @@
     <button id="btn-back" title="Back to list">‹</button>
     <select id="session-select" title="Switch terminal"></select>
     <span id="conn-dot" title="Connection"></span>
+    <button id="btn-sched" title="Schedule input">⏱</button>
     <button id="btn-keys" title="Configure key bar">⚙</button>
     <button id="btn-kill" title="Kill session">✕</button>
   </header>
+  <div id="sched-panel" hidden>
+    <p>Scheduled input — typed into the terminal, then Enter, after a delay in hours:</p>
+    <ul id="sched-list" class="rows compact"></ul>
+    <p class="empty">Nothing scheduled.</p>
+    <!-- maxlength and max mirror MAX_FIELD_CHARS (lib/protocol.ts) and
+         MAX_SCHEDULE_DELAY_MS (cli/schedule.ts), kept in sync by hand. -->
+    <form id="sched-form">
+      <div class="form-actions">
+        <input id="sched-text" autocomplete="off" required maxlength="2048" placeholder="text to type" value="continue">
+        <input id="sched-hours" type="number" inputmode="decimal" required min="0.01" max="720" step="any" value="5" placeholder="hours" title="Delay in hours">
+        <button type="submit" class="small">Add</button>
+      </div>
+    </form>
+  </div>
   <div id="keybar-settings" hidden>
     <p>Key bar — tap to remove:</p>
     <div id="kb-selected" class="chips"></div>

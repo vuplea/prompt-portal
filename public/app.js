@@ -10,6 +10,7 @@ let nodes = []; // connected workstation names
 let sessionFilter = ''; // narrows the Running list to one workstation ('' = all)
 
 let currentId = null; // session shown in the terminal view
+let scheds = []; // the viewed session's pending scheduled inputs, as its host last broadcast them
 let ws = null;
 let lastFrameAt = 0; // last frame on the terminal socket (the hub pings every 10s)
 let reconnectTimer = null;
@@ -289,16 +290,20 @@ function toCtrl(ch) {
 // splitting a surrogate pair, whose halves would each decode to U+FFFD.
 const MAX_INPUT_FRAME_CHARS = 128 * 1024;
 
-function sendInput(data) {
+function sendMsg(msg) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify(msg));
+}
+
+function sendInput(data) {
   while (data.length > MAX_INPUT_FRAME_CHARS) {
     let cut = MAX_INPUT_FRAME_CHARS;
     const last = data.charCodeAt(cut - 1);
     if (last >= 0xd800 && last <= 0xdbff) cut--; // high surrogate: keep the pair together
-    ws.send(JSON.stringify({ t: 'i', d: data.slice(0, cut) }));
+    sendMsg({ t: 'i', d: data.slice(0, cut) });
     data = data.slice(cut);
   }
-  ws.send(JSON.stringify({ t: 'i', d: data }));
+  sendMsg({ t: 'i', d: data });
 }
 
 let sentCols = 0; // size last sent on the current socket
@@ -344,7 +349,7 @@ function fitTerm() {
   if (term.cols === sentCols && term.rows === sentRows) return;
   sentCols = term.cols;
   sentRows = term.rows;
-  ws.send(JSON.stringify({ t: 'r', c: term.cols, r: term.rows }));
+  sendMsg({ t: 'r', c: term.cols, r: term.rows });
 }
 
 function setStatus(status) {
@@ -358,6 +363,8 @@ function openSession(id) {
   dialAttempts = 0;
   sessionExited = false;
   reconnectDelay = 1000; // a fresh view must not inherit another session's backoff
+  scheds = []; // until this session's host sends its list on attach
+  renderScheds();
   showViewTerm();
   connect();
 }
@@ -595,6 +602,9 @@ async function connect() {
       writeTerm('\x1bc' + msg.d);
     } else if (msg.t === 'o') {
       writeTerm(msg.d);
+    } else if (msg.t === 'scheds') {
+      scheds = Array.isArray(msg.scheds) ? msg.scheds : [];
+      renderScheds();
     } else if (msg.t === 'x') {
       // The session is about to vanish (its host exits with the shell);
       // show the exit banner over the final screen, then go home from the
@@ -637,6 +647,61 @@ $('#btn-kill').onclick = () => {
   const session = sessions.find((s) => s.id === currentId);
   if (session) run(closeSession(session));
 };
+
+/* ------------------------------------------------- scheduled input */
+
+// The session's host owns the schedules (they must fire with the phone
+// asleep); this panel is a mirror of the list it broadcasts. An add or
+// cancel shows up only via that broadcast — what the list shows is what is
+// actually scheduled.
+
+function fmtEta(ms) {
+  const m = Math.ceil(ms / 60000);
+  if (m < 1) return 'now';
+  if (m < 60) return `in ${m}m`;
+  return `in ${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+function renderScheds() {
+  $('#btn-sched').textContent = scheds.length > 0 ? `⏱${scheds.length}` : '⏱';
+  if ($('#sched-panel').hidden) return;
+  $('#sched-list').replaceChildren(...scheds.map((s) =>
+    el('li', {}, [
+      el('div', { className: 'grow' }, [el('div', { className: 'meta', textContent: s.d })]),
+      el('span', { className: 'sched-eta', textContent: fmtEta(s.at - Date.now()) }),
+      el('button', {
+        className: 'danger-text', textContent: '✕', title: 'Cancel',
+        onclick: () => sendMsg({ t: 'unsched', id: s.id }),
+      }),
+    ])
+  ));
+}
+
+// The header's fold-out panels (⏱ schedules, ⚙ key bar): at most one open,
+// and any height change re-fits the terminal underneath.
+function togglePanel(panel, other, renderOnOpen) {
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) {
+    other.hidden = true;
+    renderOnOpen();
+  }
+  requestAnimationFrame(fitTerm);
+}
+
+$('#btn-sched').onclick = () => togglePanel($('#sched-panel'), $('#keybar-settings'), renderScheds);
+
+$('#sched-form').onsubmit = (e) => {
+  e.preventDefault();
+  const text = $('#sched-text').value.trim();
+  const hours = Number($('#sched-hours').value);
+  if (!text || !Number.isFinite(hours) || hours <= 0) return;
+  sendMsg({ t: 'sched', d: text, delay: Math.round(hours * 3600 * 1000) });
+};
+
+// The countdowns drift while the panel sits open; keep them honest.
+setInterval(() => {
+  if (document.body.dataset.view === 'term' && !$('#sched-panel').hidden) renderScheds();
+}, 10 * 1000);
 
 /* ----------------------------------------------------------- keybar */
 
@@ -816,12 +881,7 @@ $('#nl-ctrl').onclick = () => setNewline('ctrl');
 $('#nl-shift').onclick = () => setNewline('shift');
 setNewline(newline);
 
-$('#btn-keys').onclick = () => {
-  const panel = $('#keybar-settings');
-  panel.hidden = !panel.hidden;
-  if (!panel.hidden) renderKeybarSettings();
-  requestAnimationFrame(fitTerm); // the panel takes real height from the terminal
-};
+$('#btn-keys').onclick = () => togglePanel($('#keybar-settings'), $('#sched-panel'), renderKeybarSettings);
 
 /* ----------------------------------------------------------- layout */
 

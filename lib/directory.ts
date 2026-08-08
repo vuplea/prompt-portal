@@ -51,22 +51,28 @@ export class SessionConn {
   }
 
   handleMessage(msg: Msg): void {
+    let payload: Msg;
     switch (msg.t) {
       case 's':
       case 'o':
-      case 'x': {
-        if (msg.t !== 'x' && typeof msg.d !== 'string') return;
-        const payload: Msg = msg.t === 'x'
-          ? { t: 'x', code: typeof msg.code === 'number' ? msg.code : null }
-          : { t: msg.t, d: msg.d };
-        // A client-tagged frame (a replay snapshot and its exit marker)
-        // answers one browser; anything else fans out to all watchers.
-        const targets = msg.client ? [this.watchers.get(msg.client)] : this.watchers.values();
-        for (const ws of targets) {
-          if (ws && ws.readyState === 1) sendBounded(ws, payload);
-        }
+        if (typeof msg.d !== 'string') return;
+        payload = { t: msg.t, d: msg.d };
         break;
-      }
+      case 'x':
+        payload = { t: 'x', code: typeof msg.code === 'number' ? msg.code : null };
+        break;
+      case 'scheds':
+        if (!Array.isArray(msg.scheds)) return;
+        payload = { t: 'scheds', scheds: msg.scheds };
+        break;
+      default:
+        return;
+    }
+    // A client-tagged frame (a replay snapshot and its companions) answers
+    // one browser; anything else fans out to all watchers.
+    const targets = msg.client ? [this.watchers.get(msg.client)] : this.watchers.values();
+    for (const ws of targets) {
+      if (ws && ws.readyState === 1) sendBounded(ws, payload);
     }
   }
 
@@ -89,12 +95,18 @@ export class SessionConn {
     sendBounded(this.ws, { t: 'unwatch' });
   }
 
-  // Input and resize from a watching browser. Input frames can be up to 1MB
-  // each (pastes), so this direction needs the send bound as much as the
-  // fan-out does.
+  // Input, resize, and schedule management from a watching browser, bound
+  // for the host (which validates schedule fields itself). Input frames can
+  // be up to 1MB each (pastes), so this direction needs the send bound as
+  // much as the fan-out does.
   handleBrowserMessage(msg: Msg): void {
     if (msg.t === 'i' && typeof msg.d === 'string') sendBounded(this.ws, { t: 'i', d: msg.d });
     else if (msg.t === 'r') sendBounded(this.ws, { t: 'r', c: msg.c, r: msg.r });
+    else if (msg.t === 'sched' && typeof msg.d === 'string' && typeof msg.delay === 'number') {
+      sendBounded(this.ws, { t: 'sched', d: msg.d, delay: msg.delay });
+    } else if (msg.t === 'unsched' && typeof msg.id === 'string') {
+      sendBounded(this.ws, { t: 'unsched', id: msg.id });
+    }
   }
 
   kill(): void {

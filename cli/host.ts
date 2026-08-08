@@ -5,6 +5,7 @@ import { isWindows, resolveExistingDir } from './config';
 import { configureHostConsole } from './console';
 import { maintainLink, type Post } from './link';
 import { muteConsole, setLogTag } from './log';
+import { InputScheduler } from './schedule';
 import { KILL_GRACE_MS, Session } from './session';
 
 // `prompt-portal` — one session, one process. Owns the pty, renders it natively in the
@@ -247,6 +248,16 @@ export async function runHost(spec: HostSpec, ctx: HostContext): Promise<never> 
     else if (msg.t === 'x') post(msg);
   });
 
+  // Scheduled inputs (cli/schedule.ts) are held here, not on the hub or the
+  // page, so they fire straight into the pty whatever the link is doing.
+  // Watchers mirror the pending list: they get it on attach and after every
+  // change; while the link is down there is nobody to tell, and the next
+  // attach resyncs.
+  const scheduler = new InputScheduler(
+    (data) => session.write(data),
+    () => post?.({ t: 'scheds', scheds: scheduler.list() }),
+  );
+
   return maintainLink(`${ctx.hubUrl}/session`, SESSION_PROTOCOL, ctx.password, {
     onOpen(p) {
       p({ t: 'register', session: session.serialize() });
@@ -262,6 +273,9 @@ export async function runHost(spec: HostSpec, ctx: HostContext): Promise<never> 
             p({ t: 's', client: msg.client, d: data });
             if (!alive) p({ t: 'x', client: msg.client, code: exitCode });
           });
+          // Sent even when empty, so the attaching view starts from truth
+          // rather than whatever it last saw.
+          p({ t: 'scheds', client: msg.client, scheds: scheduler.list() });
           break;
         case 'unwatch':
           watchCount = Math.max(0, watchCount - 1);
@@ -277,6 +291,16 @@ export async function runHost(spec: HostSpec, ctx: HostContext): Promise<never> 
             noteRemoteResize(msg.c, msg.r);
             session.resize(msg.c, msg.r);
           }
+          break;
+        case 'sched':
+          // Accepted mutations broadcast from the scheduler itself. A
+          // rejected add re-sends the unchanged list — no rejection signal,
+          // just the standing truth: a row that never appears was never
+          // scheduled.
+          if (!scheduler.add(msg.d, msg.delay)) p({ t: 'scheds', scheds: scheduler.list() });
+          break;
+        case 'unsched':
+          scheduler.remove(msg.id);
           break;
         case 'kill':
           void shutdown('hub kill');

@@ -99,6 +99,31 @@ describe('watchers', () => {
     expect(a.frames).toEqual([{ t: 'x', code: 3 }]);
   });
 
+  test('relays schedule frames: management to the host, the list to watchers', () => {
+    const directory = new Directory();
+    const { conn, frames: host } = register(directory, 's1');
+    const a = fakeSocket('browser');
+    const b = fakeSocket('browser');
+    conn.attachBrowser(a.socket as any);
+    conn.attachBrowser(b.socket as any);
+
+    // Management flows to the host; malformed frames do not.
+    conn.handleBrowserMessage({ t: 'sched', d: 'go', delay: 60_000 });
+    conn.handleBrowserMessage({ t: 'sched', d: 'no delay' });
+    conn.handleBrowserMessage({ t: 'unsched', id: 'sid' });
+    conn.handleBrowserMessage({ t: 'unsched' });
+    expect(host.filter((f) => f.t === 'sched')).toEqual([{ t: 'sched', d: 'go', delay: 60_000 }]);
+    expect(host.filter((f) => f.t === 'unsched')).toEqual([{ t: 'unsched', id: 'sid' }]);
+
+    // The pending list fans out to every watcher — or answers one on attach.
+    const scheds = [{ id: 'sid', d: 'go', at: 123 }];
+    conn.handleMessage({ t: 'scheds', scheds });
+    conn.handleMessage({ t: 'scheds', scheds: [], client: b.socket.data.clientId! });
+    conn.handleMessage({ t: 'scheds' }); // malformed: dropped
+    expect(a.frames.filter((f) => f.t === 'scheds')).toEqual([{ t: 'scheds', scheds }]);
+    expect(b.frames.filter((f) => f.t === 'scheds')).toEqual([{ t: 'scheds', scheds }, { t: 'scheds', scheds: [] }]);
+  });
+
   test('kill is delivered even on a backlogged host link', () => {
     const directory = new Directory();
     const { conn, socket, frames } = register(directory, 's1');
