@@ -185,17 +185,22 @@ body[data-view="term"] #home { display: none; }
 #btn-keys { background: none; font-size: 14px; padding: 2px 10px; }
 #btn-kill { color: var(--danger); background: none; font-size: 14px; padding: 2px 10px; }
 
-/* The scheduled-input panel, unfolded from the header's ⏱. */
-#sched-panel {
+/* The header's fold-out panels: the scheduled-input panel (⏱) and the
+   key-bar picker (⚙). */
+#sched-panel, #keybar-settings {
   background: var(--panel);
-  padding: 6px 10px 10px;
+  padding: 6px 10px;
   font-size: 12.5px;
   color: var(--muted);
 }
-#sched-panel p { margin: 4px 0; }
-/* The list scrolls, the terminal doesn't shrink: 20 pending rows would
-   otherwise squash #xterm-wrap, and the fit that follows would resize the
-   shared pty for every viewer. The form stays outside the scroll. */
+#sched-panel { padding-bottom: 10px; }
+#keybar-settings { padding-bottom: 2px; }
+#sched-panel p, #keybar-settings p { margin: 4px 0; }
+
+/* The list scrolls so the panel's bite out of the terminal stays bounded:
+   20 pending rows would otherwise squash #xterm-wrap toward nothing, and
+   the fit that follows would shrink the shared pty for every viewer. The
+   form stays outside the scroll. */
 #sched-list { max-height: 30vh; overflow-y: auto; }
 #sched-list .meta {
   color: var(--text);
@@ -204,14 +209,6 @@ body[data-view="term"] #home { display: none; }
 .sched-eta { color: var(--warn); white-space: nowrap; }
 #sched-hours { flex: 0 1 5.5em; }
 
-/* The key-bar picker, unfolded from the header's ⚙. */
-#keybar-settings {
-  background: var(--panel);
-  padding: 6px 10px 2px;
-  font-size: 12.5px;
-  color: var(--muted);
-}
-#keybar-settings p { margin: 4px 0; }
 #keybar-settings .chips { margin: 4px 0 8px; }
 #kb-font, #kb-newline { display: flex; align-items: center; gap: 8px; margin: 6px 0 8px; }
 #kb-font button, #kb-newline button { padding: 2px 12px; font-size: 13px; }

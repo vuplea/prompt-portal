@@ -667,7 +667,9 @@ function renderScheds() {
   if ($('#sched-panel').hidden) return;
   $('#sched-list').replaceChildren(...scheds.map((s) =>
     el('li', {}, [
-      el('div', { className: 'grow' }, [el('div', { className: 'meta', textContent: s.d })]),
+      // title: the row ellipsizes, and a hover is the only way to read a
+      // long scheduled text in full.
+      el('div', { className: 'grow' }, [el('div', { className: 'meta', textContent: s.d, title: s.d })]),
       el('span', { className: 'sched-eta', textContent: fmtEta(s.at - Date.now()) }),
       el('button', {
         className: 'danger-text', textContent: '✕', title: 'Cancel',
