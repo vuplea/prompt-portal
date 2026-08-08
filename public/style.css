@@ -208,6 +208,8 @@ body[data-view="term"] #home { display: none; }
 }
 .sched-eta { color: var(--warn); white-space: nowrap; }
 #sched-hours { flex: 0 1 5.5em; }
+#sched-esc-label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+#sched-esc-label input { accent-color: var(--accent); }
 
 #keybar-settings .chips { margin: 4px 0 8px; }
 #kb-font, #kb-newline { display: flex; align-items: center; gap: 8px; margin: 6px 0 8px; }

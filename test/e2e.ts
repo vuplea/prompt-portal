@@ -158,9 +158,9 @@ await until('scheduled command ran', 30000, async () =>
   a.frames.some((f) => f.t === 'o' && String(f.d).includes('pt_e2e_sched')));
 
 const cancelMarker = 'pt_e2e_never';
-a.ws.send(JSON.stringify({ t: 'sched', d: cancelMarker, delay: 3600 * 1000 }));
-const sched = await until('far-future schedule fanned out', 5000, async () =>
-  b.frames.filter((f) => f.t === 'scheds').at(-1)?.scheds?.find((s: any) => s.d === cancelMarker));
+a.ws.send(JSON.stringify({ t: 'sched', d: cancelMarker, delay: 3600 * 1000, esc: true }));
+const sched = await until('far-future schedule fanned out with its esc flag', 5000, async () =>
+  b.frames.filter((f) => f.t === 'scheds').at(-1)?.scheds?.find((s: any) => s.d === cancelMarker && s.esc === true));
 a.ws.send(JSON.stringify({ t: 'unsched', id: sched.id }));
 await until('canceled schedule gone from the fan-out', 5000, async () => {
   const last = b.frames.filter((f) => f.t === 'scheds').at(-1);

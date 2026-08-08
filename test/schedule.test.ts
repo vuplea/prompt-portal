@@ -37,6 +37,13 @@ describe('add', () => {
     scheduler.add('sooner', 60_000);
     expect(scheduler.list().map((s) => s.d)).toEqual(['sooner', 'later']);
   });
+
+  test('records the Esc-first flag only for esc === true', () => {
+    const { scheduler } = makeScheduler();
+    scheduler.add('with', 60_000, true);
+    scheduler.add('without', 60_000, 'yes');
+    expect(scheduler.list().map((s) => s.esc)).toEqual([true, undefined]);
+  });
 });
 
 describe('remove', () => {
@@ -65,6 +72,13 @@ describe('firing', () => {
     scheduler.add('again', 1);
     await Bun.sleep(100);
     expect(writes).toEqual(['go', '\r', 'again', '\r']);
+  });
+
+  test('an Esc-first schedule presses Esc, then the text, then Enter', async () => {
+    const { scheduler, writes } = makeScheduler();
+    scheduler.add('go', 1, true);
+    await Bun.sleep(100);
+    expect(writes).toEqual(['\x1b', 'go', '\r']);
   });
 
   test('schedules due together fire one per tick, never interleaved', async () => {

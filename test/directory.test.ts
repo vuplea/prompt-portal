@@ -107,12 +107,19 @@ describe('watchers', () => {
     conn.attachBrowser(a.socket as any);
     conn.attachBrowser(b.socket as any);
 
-    // Management flows to the host; malformed frames do not.
+    // Management flows to the host — the esc flag only as a literal true —
+    // and malformed frames do not.
     conn.handleBrowserMessage({ t: 'sched', d: 'go', delay: 60_000 });
+    conn.handleBrowserMessage({ t: 'sched', d: 'esc', delay: 60_000, esc: true });
+    conn.handleBrowserMessage({ t: 'sched', d: 'junk esc', delay: 60_000, esc: 'yes' as any });
     conn.handleBrowserMessage({ t: 'sched', d: 'no delay' });
     conn.handleBrowserMessage({ t: 'unsched', id: 'sid' });
     conn.handleBrowserMessage({ t: 'unsched' });
-    expect(host.filter((f) => f.t === 'sched')).toEqual([{ t: 'sched', d: 'go', delay: 60_000 }]);
+    expect(host.filter((f) => f.t === 'sched')).toEqual([
+      { t: 'sched', d: 'go', delay: 60_000 },
+      { t: 'sched', d: 'esc', delay: 60_000, esc: true },
+      { t: 'sched', d: 'junk esc', delay: 60_000 },
+    ]);
     expect(host.filter((f) => f.t === 'unsched')).toEqual([{ t: 'unsched', id: 'sid' }]);
 
     // The pending list fans out to every watcher — or answers one on attach.

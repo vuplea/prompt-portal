@@ -248,13 +248,19 @@ export async function runHost(spec: HostSpec, ctx: HostContext): Promise<never> 
     else if (msg.t === 'x') post(msg);
   });
 
+  // Remote input, typed or scheduled, in one place — so a scheduled Esc gets
+  // the same win32-input-mode translation a typed one does.
+  const writeInput = (data: string) => {
+    session.write(isWindows && data === '\x1b' ? WIN32_INPUT_ESC : data);
+  };
+
   // Scheduled inputs (cli/schedule.ts) are held here, not on the hub or the
   // page, so they fire straight into the pty whatever the link is doing.
   // Watchers mirror the pending list: they get it on attach and after every
   // change; while the link is down there is nobody to tell, and the next
   // attach resyncs.
   const scheduler = new InputScheduler(
-    (data) => session.write(data),
+    writeInput,
     () => post?.({ t: 'scheds', scheds: scheduler.list() }),
   );
 
@@ -282,9 +288,7 @@ export async function runHost(spec: HostSpec, ctx: HostContext): Promise<never> 
           console.log(`viewer detached (${watchCount} watching)`);
           break;
         case 'i':
-          if (typeof msg.d === 'string') {
-            session.write(isWindows && msg.d === '\x1b' ? WIN32_INPUT_ESC : msg.d);
-          }
+          if (typeof msg.d === 'string') writeInput(msg.d);
           break;
         case 'r':
           if (typeof msg.c === 'number' && typeof msg.r === 'number') {
@@ -297,7 +301,7 @@ export async function runHost(spec: HostSpec, ctx: HostContext): Promise<never> 
           // rejected add re-sends the unchanged list — no rejection signal,
           // just the standing truth: a row that never appears was never
           // scheduled.
-          if (!scheduler.add(msg.d, msg.delay)) p({ t: 'scheds', scheds: scheduler.list() });
+          if (!scheduler.add(msg.d, msg.delay, msg.esc)) p({ t: 'scheds', scheds: scheduler.list() });
           break;
         case 'unsched':
           scheduler.remove(msg.id);

@@ -94,6 +94,7 @@
       <div class="form-actions">
         <input id="sched-text" autocomplete="off" required maxlength="2048" placeholder="text to type" value="continue">
         <input id="sched-hours" type="number" inputmode="decimal" required min="0.01" max="720" step="any" value="5" placeholder="hours" title="Delay in hours">
+        <label id="sched-esc-label" title="Press Esc first — dismisses a dialog sitting over the input, like Claude Code's usage-limit menu. Untick for plain shells, where a lone Esc starts an editing sequence."><input type="checkbox" id="sched-esc" checked>Esc</label>
         <button type="submit" class="small">Add</button>
       </div>
     </form>

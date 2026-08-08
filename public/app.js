@@ -668,8 +668,10 @@ function renderScheds() {
   $('#sched-list').replaceChildren(...scheds.map((s) =>
     el('li', {}, [
       // title: the row ellipsizes, and a hover is the only way to read a
-      // long scheduled text in full.
-      el('div', { className: 'grow' }, [el('div', { className: 'meta', textContent: s.d, title: s.d })]),
+      // long scheduled text in full. ⎋ marks an Esc-first schedule.
+      el('div', { className: 'grow' }, [
+        el('div', { className: 'meta', textContent: (s.esc ? '⎋ ' : '') + s.d, title: s.d }),
+      ]),
       el('span', { className: 'sched-eta', textContent: fmtEta(s.at - Date.now()) }),
       el('button', {
         className: 'danger-text', textContent: '✕', title: 'Cancel',
@@ -697,7 +699,9 @@ $('#sched-form').onsubmit = (e) => {
   const text = $('#sched-text').value.trim();
   const hours = Number($('#sched-hours').value);
   if (!text || !Number.isFinite(hours) || hours <= 0) return;
-  sendMsg({ t: 'sched', d: text, delay: Math.round(hours * 3600 * 1000) });
+  const msg = { t: 'sched', d: text, delay: Math.round(hours * 3600 * 1000) };
+  if ($('#sched-esc').checked) msg.esc = true;
+  sendMsg(msg);
 };
 
 // The countdowns drift while the panel sits open; keep them honest.

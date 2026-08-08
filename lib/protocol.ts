@@ -16,7 +16,8 @@
 //                                             attach and after every change
 //       client -> server : {t:'i', d}         input (keystrokes/paste)
 //                          {t:'r', c, r}      resize to c cols x r rows
-//                          {t:'sched', d, delay} type d (then Enter) in delay ms
+//                          {t:'sched', d, delay[, esc]} type d (then Enter) in
+//                                             delay ms; esc: press Esc first
 //                          {t:'unsched', id}  cancel a pending scheduled input
 //
 //   SESSION_PROTOCOL   session host (`prompt-portal`) -> hub, one outbound socket per
@@ -30,7 +31,7 @@
 //       hub -> host : {t:'watch', client}      a browser attached: replay to it
 //                     {t:'unwatch'}            a browser left
 //                     {t:'i', d} {t:'r', c, r} input and resize
-//                     {t:'sched', d, delay} {t:'unsched', id} scheduled input
+//                     {t:'sched', d, delay[, esc]} {t:'unsched', id} scheduled input
 //                     {t:'kill'}               close the session and exit
 //
 //   LAUNCHER_PROTOCOL  workstation launcher (`prompt-portal launcher`) -> hub, one
@@ -95,6 +96,7 @@ export interface ScheduledInput {
   id: string;
   d: string; // the text to type
   at: number; // fire time, epoch ms on the host's clock
+  esc?: boolean; // press Esc first — dismisses a dialog parked over the input
 }
 
 export interface Msg {
@@ -111,6 +113,7 @@ export interface Msg {
   error?: string;
   session?: SessionInfo;
   delay?: number;
+  esc?: boolean;
   scheds?: ScheduledInput[];
 }
 

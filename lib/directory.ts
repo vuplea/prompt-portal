@@ -103,7 +103,9 @@ export class SessionConn {
     if (msg.t === 'i' && typeof msg.d === 'string') sendBounded(this.ws, { t: 'i', d: msg.d });
     else if (msg.t === 'r') sendBounded(this.ws, { t: 'r', c: msg.c, r: msg.r });
     else if (msg.t === 'sched' && typeof msg.d === 'string' && typeof msg.delay === 'number') {
-      sendBounded(this.ws, { t: 'sched', d: msg.d, delay: msg.delay });
+      const frame: Msg = { t: 'sched', d: msg.d, delay: msg.delay };
+      if (msg.esc === true) frame.esc = true;
+      sendBounded(this.ws, frame);
     } else if (msg.t === 'unsched' && typeof msg.id === 'string') {
       sendBounded(this.ws, { t: 'unsched', id: msg.id });
     }
